@@ -18,7 +18,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 from scipy import stats
 
-from .benchmarks import memory_capacity
+from .benchmarks import echo_state_gap, memory_capacity
 from .config import ExperimentConfig, save_config
 from .connectome import load_connectome
 from .controls import WIRINGS, make_wiring
@@ -75,7 +75,8 @@ def prepare_subgraph(cfg: ExperimentConfig, verbose: bool = True) -> Subgraph:
     return sub
 
 
-def prepare_datasets(cfg: ExperimentConfig) -> dict[str, Dataset]:
+def load_closes(cfg: ExperimentConfig) -> dict:
+    """Close prices per ticker, from the configured source (yfinance results are cached)."""
     mc = cfg.market
     if mc.source == "synthetic":
         closes = {"SYNTH": synthetic_prices(mc.synthetic_days, mc.synthetic_predictability, seed=0)}
@@ -89,27 +90,51 @@ def prepare_datasets(cfg: ExperimentConfig) -> dict[str, Dataset]:
         raise ValueError("market.source must be 'yfinance', 'csv' or 'synthetic'")
     if not closes:
         raise ValueError(f"no price data for tickers {mc.tickers}")
-    return {t: make_dataset(c, mc.features, mc.horizon, mc.z_window, mc.ar_lags, ticker=t) for t, c in closes.items()}
+    return {t: c.dropna() for t, c in closes.items()}
+
+
+def prepare_datasets(cfg: ExperimentConfig) -> dict[str, Dataset]:
+    mc = cfg.market
+    return {t: make_dataset(c, mc.features, mc.horizon, mc.z_window, mc.ar_lags, ticker=t)
+            for t, c in load_closes(cfg).items()}
 
 
 # --------------------------------------------------------------------------- jobs
+
+def build_matrix(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: int):
+    """Recurrent matrix for one wiring and seed: (scaled signed W, synapse counts, signs, raw gain).
+    Seeded exactly like the experiment, so anything built from it reproduces the experiment's reservoir."""
+    rc = cfg.reservoir
+    W_counts, sign = make_wiring(wiring, sub.W, sub.sign, np.random.default_rng([seed, 1, WIRINGS.index(wiring)]),
+                                 cfg.swaps_per_edge)
+    W, raw_gain = scale_weights(signed_weights(W_counts, sign, rc.weight_transform), rc.spectral_radius, rc.normalize)
+    return W, W_counts, sign, raw_gain
+
+
+def reservoir_kwargs(cfg: ExperimentConfig) -> dict:
+    rc = cfg.reservoir
+    return dict(leak_rate=rc.leak_rate, input_scaling=rc.input_scaling, bias_scaling=rc.bias_scaling,
+                input_mode=rc.input_mode, backend=rc.backend, device=rc.device)
+
+
+def market_reservoir(sub: Subgraph, cfg: ExperimentConfig, W, n_features: int, seed: int) -> Reservoir:
+    """The reservoir the market forecasts use (same input weights and bias for every wiring of a seed)."""
+    return Reservoir(W, sub.input_idx, n_features, rng=np.random.default_rng([seed, 3]), **reservoir_kwargs(cfg))
+
 
 def run_job(sub: Subgraph, datasets: dict, cfg: ExperimentConfig, wiring: str, seed: int) -> dict:
     """One wiring, one seed: build the reservoir, forecast every ticker, measure memory capacity."""
     t0 = time.time()
     rc, ev = cfg.reservoir, cfg.eval
-    W_counts, sign = make_wiring(wiring, sub.W, sub.sign, np.random.default_rng([seed, 1, WIRINGS.index(wiring)]),
-                                 cfg.swaps_per_edge)
-    W, raw_gain = scale_weights(signed_weights(W_counts, sign, rc.weight_transform), rc.spectral_radius, rc.normalize)
+    W, W_counts, sign, raw_gain = build_matrix(sub, cfg, wiring, seed)
     pool = sub.readout_pool
     readout_idx = np.sort(np.random.default_rng([seed, 2]).choice(pool, min(cfg.subgraph.n_readout, len(pool)),
                                                                   replace=False))
-    common = dict(leak_rate=rc.leak_rate, input_scaling=rc.input_scaling, bias_scaling=rc.bias_scaling,
-                  input_mode=rc.input_mode, backend=rc.backend, device=rc.device)
+    common = reservoir_kwargs(cfg)
 
     rows, preds = [], {}
     for ticker, ds in datasets.items():
-        res = Reservoir(W, sub.input_idx, ds.X.shape[1], rng=np.random.default_rng([seed, 3]), **common)
+        res = market_reservoir(sub, cfg, W, ds.X.shape[1], seed)
         states = res.run(ds.X, record_idx=readout_idx, washout=rc.washout)
         post = ds.slice(rc.washout)
         if rc.readout_include_input:
@@ -130,6 +155,7 @@ def run_job(sub: Subgraph, datasets: dict, cfg: ExperimentConfig, wiring: str, s
         graph["memory_capacity"], mc_curve = memory_capacity(
             res1, readout_idx, cfg.memory.n_steps, cfg.memory.max_delay, cfg.memory.washout,
             rng=np.random.default_rng([seed, 5]))
+        graph["echo_gap"] = echo_state_gap(res1, readout_idx, rng=np.random.default_rng([seed, 6]))
     return {"wiring": wiring, "seed": seed, "rows": rows, "preds": preds, "graph": graph, "mc": mc_curve,
             "seconds": time.time() - t0}
 
@@ -288,12 +314,21 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
                 if mc_cmp is not None and key in mc_cmp.index else "-"
             lines.append(f"| {w} | {_pm(g, 2)} | {diff} |")
 
+    gain_label = "raw spectral radius" if rc.normalize == "spectral" else "raw bulk scale"
     lines += ["", "## Wiring structure (before rescaling)", "",
-              "| wiring | edges | reciprocity | largest SCC | raw gain |", "|---|---|---|---|---|"]
+              f"| wiring | edges | reciprocity | largest SCC | {gain_label} | echo gap |", "|---|---|---|---|---|---|"]
     for w in cfg.wirings:
         g = graph[graph["wiring"] == w]
+        echo = f"{g['echo_gap'].max():.0e}" if "echo_gap" in g else "-"
         lines.append(f"| {w} | {int(g['edges'].mean()):,} | {_pm(g['reciprocity'])} | "
-                     f"{_pm(g['largest_scc_frac'], 2)} | {_pm(g['raw_gain'], 2)} |")
+                     f"{_pm(g['largest_scc_frac'], 2)} | {_pm(g['raw_gain'], 2)} | {echo} |")
+    if "echo_gap" in graph.columns:
+        bad = sorted(graph.loc[graph["echo_gap"] > 1e-3, "wiring"].unique())
+        lines += ["", "Echo gap = largest state difference between two runs whose inputs differ only in the distant "
+                      "past (worst seed). Near 0 means the reservoir forgets its starting point, as it should."]
+        if bad:
+            lines += ["", f"**Warning:** {', '.join(bad)} did not forget its past (some neurons latch), so the gain is "
+                          "too high for a valid reservoir and its results above shouldn't be compared."]
     lines += ["", "## Reading this", "",
               "- p-values come from paired tests over seeds (seed = input weights, readout neurons, control "
               "randomness). They capture seed-to-seed variation, not luck in the market history; the ensemble "

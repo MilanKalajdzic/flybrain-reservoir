@@ -31,3 +31,20 @@ def memory_capacity(reservoir: Reservoir, record_idx, n_steps: int = 3000, max_d
     r = np.where(denom > 0, (pc * yc).sum(axis=0) / np.where(denom > 0, denom, 1.0), 0.0)
     mc = r ** 2
     return float(mc.sum()), mc
+
+
+def echo_state_gap(reservoir: Reservoir, record_idx=None, n_steps: int = 800, perturb: int = 300,
+                   rng: np.random.Generator | None = None) -> float:
+    """Does the reservoir forget where it started? (the echo state property)
+
+    Two runs get identical inputs except for the first `perturb` steps. Returns the largest state
+    difference at the end: ~0 means the past washed out, as a reservoir should. Values near 2 mean some
+    neurons latched onto the distant past (typically a gain far above 1), so results for that wiring
+    shouldn't be trusted.
+    """
+    rng = rng if rng is not None else np.random.default_rng()
+    u1 = rng.uniform(-1.0, 1.0, size=(n_steps, 1)).astype(np.float32)
+    u2 = u1.copy()
+    u2[:perturb] = rng.uniform(-1.0, 1.0, size=(perturb, 1))
+    s1, s2 = reservoir.run(u1, record_idx=record_idx), reservoir.run(u2, record_idx=record_idx)
+    return float(np.abs(s1[-1] - s2[-1]).max())

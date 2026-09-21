@@ -62,12 +62,20 @@ def write_mock_raw_files(conn: Connectome, raw_dir: str | Path, n_fragments: int
     body = conn.neurons["bodyId"].to_numpy()
     frag = np.setdiff1d(rng.choice(10**8, n_fragments * 2, replace=False) + 10**7, body)[:n_fragments]
 
+    # soma positions: none for sensory neurons (cell bodies sit outside the CNS), except a few that only
+    # have a "towards soma" point, like in the real data
+    sensory = (conn.neurons["superclass"] == "sensory").to_numpy()
+    xyz = rng.integers(1000, 90000, size=(len(body), 3))
+    soma = [None if s else list(map(int, p)) for s, p in zip(sensory, xyz)]
+    tosoma = [list(map(int, p)) if s and i % 5 == 0 else None for i, (s, p) in enumerate(zip(sensory, xyz))]
     ann = pd.DataFrame({
         "bodyId": np.concatenate([body, frag]).astype(np.uint64),
         "status": ["Traced"] * len(body) + ["Orphan"] * len(frag),
         "superclass": list(conn.neurons["superclass"]) + [None] * len(frag),
         "class": list(conn.neurons["class"]) + [None] * len(frag),
         "type": list(conn.neurons["type"]) + [None] * len(frag),
+        "somaLocation": soma + [None] * len(frag),
+        "tosomaLocation": tosoma + [None] * len(frag),
     })
     feather.write_feather(ann, raw_dir / FILES["annotations"])
 

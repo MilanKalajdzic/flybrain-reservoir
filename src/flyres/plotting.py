@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
@@ -169,6 +170,170 @@ def plot_spectra(eigenvalues: dict, radius: float | None = None, path=None):
     axes[0].set_ylabel("Im λ")
     fig.tight_layout()
     return _save(fig, path)
+
+
+SEQ_BLUE = ["#eef4fb", "#cde2fb", "#86b6ef", "#2a78d6", "#184f95", "#0d366b"]  # light theme: darker = more
+# dark theme counterparts (brighter = more), for the animation
+D_SURFACE, D_INK, D_INK_2, D_GRID, D_AXIS = "#1a1a19", "#ffffff", "#c3c2b7", "#2c2c2a", "#383835"
+GLOW = ["#22354d", "#256abf", "#3987e5", "#86b6ef", "#e6f0fd"]
+
+
+def plot_activity_heatmap(dev: pd.DataFrame, close: pd.Series, episodes: dict | None = None, vmin: float = 0.5,
+                          vmax: float = 1.6, ticker: str = "SPY", path=None):
+    """Distance-from-normal per pathway stage over time (rows = groups), under the SPY price for context."""
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+
+    cmap = LinearSegmentedColormap.from_list("seq_blue", SEQ_BLUE)
+    weeks = dev.index
+    step = weeks[-1] - weeks[-2] if len(weeks) > 1 else pd.Timedelta(days=7)
+    edges = weeks.append(pd.DatetimeIndex([weeks[-1] + step]))
+    price = close.loc[edges[0]:edges[-1]]
+
+    fig = plt.figure(figsize=(11, 0.34 * dev.shape[1] + 2.6), facecolor=SURFACE)
+    gs = fig.add_gridspec(2, 2, height_ratios=[1, 0.34 * dev.shape[1] / 1.2], width_ratios=[1, 0.018],
+                          hspace=0.08, wspace=0.02)
+    ax_p = fig.add_subplot(gs[0, 0])
+    ax_h = fig.add_subplot(gs[1, 0], sharex=ax_p)
+    ax_c = fig.add_subplot(gs[1, 1])
+    for ax in (ax_p, ax_h):
+        ax.set_facecolor(SURFACE)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            ax.spines[side].set_color(AXIS)
+            ax.spines[side].set_linewidth(0.8)
+        ax.tick_params(colors=MUTED, labelcolor=INK_2, labelsize=8.5)
+
+    ax_p.plot(price.index, price.values, color=INK_2, linewidth=1.4, **LINE)
+    ax_p.set_yscale("log")
+    ax_p.yaxis.set_major_locator(mticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
+    ax_p.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    ax_p.yaxis.set_minor_formatter(mticker.NullFormatter())
+    ax_p.grid(True, axis="y", color=GRID, linewidth=0.8)
+    ax_p.set_ylabel(ticker, color=INK_2, fontsize=9)
+    ax_p.tick_params(labelbottom=False)
+    for name, (a, b) in (episodes or {}).items():
+        a, b = pd.Timestamp(a), pd.Timestamp(b)
+        if b < weeks[0] or a > weeks[-1]:
+            continue
+        ax_p.axvspan(a, b, color=GRID, alpha=0.6, zorder=0, linewidth=0)
+        ax_p.text(a, 1.02, name, transform=ax_p.get_xaxis_transform(), fontsize=8.5, color=INK_2, va="bottom")
+
+    mesh = ax_h.pcolormesh(edges, np.arange(dev.shape[1] + 1), dev.to_numpy().T, cmap=cmap,
+                           norm=Normalize(vmin, vmax), shading="flat", rasterized=True)
+    ax_h.set_xlim(edges[0], edges[-1])
+    ax_h.hlines(np.arange(1, dev.shape[1]), edges[0], edges[-1], color=SURFACE, linewidth=2)  # row gaps
+    ax_h.set_yticks(np.arange(dev.shape[1]) + 0.5, dev.columns)
+    ax_h.invert_yaxis()
+    ax_h.tick_params(axis="y", length=0)
+    cb = fig.colorbar(mesh, cax=ax_c)
+    cb.outline.set_visible(False)
+    cb.ax.tick_params(colors=MUTED, labelcolor=INK_2, labelsize=8)
+    cb.set_label("distance from normal (mean |z|)", color=INK_2, fontsize=8.5)
+    fig.text(0.125, 0.985, "How stirred up each part of the fly circuit is", fontsize=11, fontweight="bold",
+             color=INK, va="top")
+    fig.text(0.125, 0.955, "Average distance of each group's neurons from their own normal activity. "
+             "Darker = more stirred up. Shaded = big drawdowns.", fontsize=8.5, color=INK_2, va="top")
+    return _save(fig, path)
+
+
+def animate_brain(glow: pd.DataFrame, xy: np.ndarray, input_idx, close: pd.Series, background_xy: np.ndarray,
+                  window: tuple, title: str, path, ticker: str = "SPY", fps: int = 6, vmin: float = 0.7,
+                  vmax: float = 1.9, colors: int = 96):
+    """Animated frontal view of the circuit, one frame per week: brighter = further from normal activity.
+
+    glow: weekly mean |z|, rows = weeks, columns = neurons. xy: (n, 2) soma positions (NaN = unknown).
+    Input neurons have their cell bodies outside the brain, so they get their own grid on the side.
+    """
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+    from PIL import Image
+
+    cmap = LinearSegmentedColormap.from_list("glow", GLOW)
+    norm = Normalize(vmin, vmax)  # a normal week (|z| around 0.8) stays dim, crash weeks glow
+    frames = glow.loc[window[0]:window[1]]
+    price = close.loc[pd.Timestamp(window[0]) - pd.Timedelta(days=7):window[1]]
+    peak = close.loc[:window[1]].cummax()
+
+    inputs = np.asarray(input_idx)
+    placed = np.flatnonzero(np.isfinite(xy[:, 0]) & ~np.isin(np.arange(len(xy)), inputs))
+
+    fig = plt.figure(figsize=(9.6, 6.0), dpi=100, facecolor=D_SURFACE)
+    ax_b = fig.add_axes([0.01, 0.02, 0.62, 0.84])
+    ax_i = fig.add_axes([0.68, 0.45, 0.28, 0.30])
+    ax_p = fig.add_axes([0.68, 0.10, 0.28, 0.24])
+    for ax in (ax_b, ax_i, ax_p):
+        ax.set_facecolor(D_SURFACE)
+
+    # brain outline: density of all ~140k somata, drawn once
+    H, xe, ye = np.histogram2d(background_xy[:, 0], background_xy[:, 1], bins=(260, 190))
+    outline = LinearSegmentedColormap.from_list("outline", [D_SURFACE, "#4a4a45"])
+    ax_b.imshow(np.log1p(H.T), extent=(xe[0], xe[-1], ye[-1], ye[0]), cmap=outline, interpolation="bilinear",
+                aspect="equal")
+    first = frames.iloc[0].to_numpy()
+    sc = ax_b.scatter(xy[placed, 0], xy[placed, 1], s=7, c=first[placed], cmap=cmap, norm=norm, linewidths=0)
+    ax_b.set_xlim(xe[0], xe[-1])
+    ax_b.set_ylim(ye[-1], ye[0])
+    ax_b.axis("off")
+
+    k = len(inputs)
+    side = int(np.ceil(np.sqrt(k)))
+    gx, gy = np.meshgrid(np.arange(side), np.arange(side))
+    gx, gy = gx.ravel()[:k], gy.ravel()[:k]
+    sci = ax_i.scatter(gx, gy, s=34, c=first[inputs], cmap=cmap, norm=norm, linewidths=0)
+    ax_i.set_xlim(-1, side)
+    ax_i.set_ylim(side, -1)
+    ax_i.axis("off")
+    ax_i.set_title("input neurons (sense organs, outside the brain)", loc="left", fontsize=8.5, color=D_INK_2)
+
+    ax_p.plot(price.index, price.values, color=D_INK_2, linewidth=1.3, **LINE)
+    marker, = ax_p.plot([], [], "o", color=D_INK, markersize=6, markeredgecolor=D_SURFACE, markeredgewidth=2)
+    vline = ax_p.axvline(price.index[0], color=D_AXIS, linewidth=0.8)
+    for s in ("top", "right"):
+        ax_p.spines[s].set_visible(False)
+    for s in ("left", "bottom"):
+        ax_p.spines[s].set_color(D_AXIS)
+    ax_p.tick_params(colors="#898781", labelcolor=D_INK_2, labelsize=7.5)
+    ax_p.xaxis.set_major_locator(mticker.MaxNLocator(4))
+    ax_p.xaxis.set_major_formatter(mdates.DateFormatter("%b %y"))
+    ax_p.set_title(ticker, loc="left", fontsize=8.5, color=D_INK_2)
+
+    fig.text(0.02, 0.955, title, fontsize=13, fontweight="bold", color=D_INK)
+    fig.text(0.02, 0.915, f"{glow.shape[1]:,} neurons of the male CNS connectome driven by {ticker} returns and "
+             "volatility. Brighter = further from the neuron's normal activity.", fontsize=8.5, color=D_INK_2)
+    date_txt = fig.text(0.68, 0.84, "", fontsize=15, fontweight="bold", color=D_INK)
+    dd_txt = fig.text(0.68, 0.80, "", fontsize=9.5, color=D_INK_2)
+
+    cax = fig.add_axes([0.03, 0.085, 0.2, 0.016])
+    cb = fig.colorbar(sc, cax=cax, orientation="horizontal")
+    cb.outline.set_visible(False)
+    cb.ax.tick_params(colors="#898781", labelcolor=D_INK_2, labelsize=7)
+    cb.set_label("distance from normal (weekly mean |z|)", color=D_INK_2, fontsize=7.5)
+
+    def update(i):
+        week = frames.index[i]
+        vals = frames.iloc[i].to_numpy()
+        sc.set_array(vals[placed])
+        sci.set_array(vals[inputs])
+        p = close.loc[:week].iloc[-1]
+        marker.set_data([week], [p])
+        vline.set_xdata([week, week])
+        date_txt.set_text(f"{week:%d %b %Y}")
+        dd_txt.set_text(f"{ticker} {p / peak.loc[:week].iloc[-1] - 1:+.0%} from its peak")
+        return sc, sci, marker, vline, date_txt, dd_txt
+
+    images = []
+    for i in range(len(frames)):  # draw each frame and grab the pixels (works with any Agg-based backend)
+        update(i)
+        fig.canvas.draw()
+        images.append(Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()))
+    plt.close(fig)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    # one shared palette for all frames keeps the file small (~1.5 MB for a year of weeks)
+    palette = images[len(images) // 2].quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
+    frames_p = [im.quantize(palette=palette, dither=Image.Dither.NONE) for im in images]
+    frames_p[0].save(path, save_all=True, append_images=frames_p[1:], duration=int(1000 / fps), loop=0,
+                     optimize=True)
+    return path
 
 
 def plot_degree_ccdf(neurons: pd.DataFrame, path=None):
