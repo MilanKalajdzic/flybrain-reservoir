@@ -1,0 +1,49 @@
+# Laptop run: a 3,000-neuron circuit grown from sensory neurons, SPY daily, 5 seeds.
+# Takes a few minutes. Every key is optional; missing ones fall back to the defaults in src/flyres/config.py.
+name: small
+seeds: [0, 1, 2, 3, 4]
+wirings: [connectome, degree_preserving, weight_shuffle, sign_shuffle, erdos_renyi]
+n_jobs: 1
+
+connectome:
+  source: malecns
+  min_weight: 5              # edges need >= 5 synapses (standard noise threshold)
+
+subgraph:
+  method: grow               # grow | top_degree | all
+  n_neurons: 3000
+  n_inputs: 100
+  input_filter: {superclass: sensory}
+  direction: both
+  n_readout: 300
+
+reservoir:
+  spectral_radius: 0.9
+  normalize: spectral
+  weight_transform: log1p
+  leak_rate: 1.0             # no per-neuron smoothing, so memory has to come from the wiring
+  input_scaling: 0.5
+  bias_scaling: 0.1
+  input_mode: dense
+  readout_include_input: true
+  input_penalty: 0.001       # raw inputs ~unpenalized: reservoir states act as a correction to a linear model
+  washout: 250
+  backend: numpy
+
+market:
+  source: yfinance
+  tickers: [SPY]
+  start: "2003-01-01"
+  features: [r1, r5, r20, vol20, vol_ratio]
+  horizon: 1
+
+eval:
+  train_min: 756             # 3 years of history before the first forecast
+  refit_every: 126           # refit the readout every ~6 months
+  position: sign
+  cost_bps: 1.0
+
+memory:
+  enabled: true
+  n_steps: 3000
+  max_delay: 100

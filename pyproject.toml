@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flybrain-reservoir"
+version = "0.1.0"
+description = "Reservoir computing on the fruit fly male CNS connectome, tested against random-wiring controls on market data."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Milan" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "pyarrow>=12",
+    "matplotlib>=3.7",
+    "pyyaml>=6",
+    "joblib>=1.3",
+    "yfinance>=0.2.40",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ipykernel", "nbformat", "nbclient"]
+gpu = ["torch>=2.2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

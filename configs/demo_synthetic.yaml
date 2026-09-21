@@ -1,0 +1,23 @@
+# Offline smoke test: fake connectome + fake prices with a planted, learnable signal.
+# Needs no downloads and runs in about a minute. Results mean nothing about real flies or markets;
+# it only proves the pipeline runs end to end and can find a signal when one exists.
+name: demo_synthetic
+seeds: [0, 1, 2]
+
+connectome:
+  source: synthetic
+  synthetic_n: 3000
+
+subgraph:
+  n_neurons: 800
+  n_inputs: 40
+  n_readout: 200
+
+market:
+  source: synthetic
+  synthetic_days: 4000
+  synthetic_predictability: 0.3
+
+memory:
+  n_steps: 2000
+  max_delay: 60

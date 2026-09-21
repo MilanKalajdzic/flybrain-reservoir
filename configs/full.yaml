@@ -1,0 +1,46 @@
+# The whole male CNS (~166k neurons) as the reservoir. Meant for the desktop:
+# ~32 GB RAM is plenty, and n_jobs runs wirings/seeds in parallel processes.
+# Expect roughly an hour on 4 cores; try backend: torch if you get a GPU build working.
+name: full
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+wirings: [connectome, degree_preserving, weight_shuffle, sign_shuffle, erdos_renyi]
+n_jobs: 4
+
+connectome:
+  source: malecns
+  min_weight: 5
+
+subgraph:
+  method: all
+  n_inputs: 300
+  input_filter: {superclass: sensory}
+  n_readout: 1000
+
+reservoir:
+  spectral_radius: 0.9
+  normalize: spectral
+  weight_transform: log1p
+  leak_rate: 1.0
+  input_scaling: 0.5
+  bias_scaling: 0.1
+  readout_include_input: true
+  input_penalty: 0.001
+  washout: 250
+  backend: numpy
+
+market:
+  source: yfinance
+  tickers: [SPY]
+  start: "2003-01-01"
+  horizon: 1
+
+eval:
+  train_min: 756
+  refit_every: 63
+  position: sign
+  cost_bps: 1.0
+
+memory:
+  enabled: true
+  n_steps: 3000
+  max_delay: 100

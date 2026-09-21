@@ -1,0 +1,21 @@
+# data and outputs (big / regenerable)
+data/raw/
+data/cache/
+results/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# notebooks
+.ipynb_checkpoints/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
