@@ -87,6 +87,8 @@ class MemoryConfig:
     n_steps: int = 3000
     max_delay: int = 100
     washout: int = 200
+    readout_noise: float = 0.001     # also report memory with this much noise on each readout (states are in
+                                     # [-1, 1], so 0.001 = 0.1% of the range); 0 = noise-free only
 
 
 @dataclass

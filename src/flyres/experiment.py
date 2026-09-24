@@ -18,7 +18,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 from scipy import stats
 
-from .benchmarks import memory_capacity, readout_stability
+from .benchmarks import memory_capacities, readout_stability
 from .config import ExperimentConfig, save_config
 from .connectome import load_connectome
 from .controls import WIRINGS, make_wiring
@@ -113,6 +113,11 @@ def build_matrix(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: int):
     return W, W_counts, sign, raw_gain
 
 
+def memory_noise_levels(cfg: ExperimentConfig) -> tuple:
+    """Noise-free memory always; memory with readout noise too unless memory.readout_noise is 0."""
+    return (0.0, cfg.memory.readout_noise) if cfg.memory.readout_noise > 0 else (0.0,)
+
+
 def readout_neurons(sub: Subgraph, cfg: ExperimentConfig, seed: int) -> np.ndarray:
     """The neurons the readout listens to for a given seed (same for every wiring of that seed)."""
     pool = sub.readout_pool
@@ -161,9 +166,11 @@ def run_job(sub: Subgraph, datasets: dict, cfg: ExperimentConfig, wiring: str, s
     mc_curve = None
     if cfg.memory.enabled:
         res1 = Reservoir(W, sub.input_idx, 1, rng=np.random.default_rng([seed, 4]), **common)
-        graph["memory_capacity"], mc_curve = memory_capacity(
-            res1, readout_idx, cfg.memory.n_steps, cfg.memory.max_delay, cfg.memory.washout,
-            rng=np.random.default_rng([seed, 5]))
+        caps = memory_capacities(res1, readout_idx, memory_noise_levels(cfg), cfg.memory.n_steps,
+                                 cfg.memory.max_delay, cfg.memory.washout, rng=np.random.default_rng([seed, 5]))
+        graph["memory_capacity"], mc_curve = caps[0.0]
+        if cfg.memory.readout_noise > 0:
+            graph["memory_capacity_noisy"] = caps[cfg.memory.readout_noise][0]
         graph.update(readout_stability(res1, readout_idx, rng=np.random.default_rng([seed, 6])))
     return {"wiring": wiring, "seed": seed, "rows": rows, "preds": preds, "graph": graph, "mc": mc_curve,
             "seconds": time.time() - t0}
@@ -235,11 +242,13 @@ def compare(metrics: pd.DataFrame, graph: pd.DataFrame, preds: dict, datasets: d
             rows.append(row)
     if "memory_capacity" in graph.columns and "connectome" in wirings:
         mc = graph.set_index("seed")
+        cols = [c for c in ("memory_capacity", "memory_capacity_noisy") if c in graph.columns]
         for other in [w for w in wirings if w != "connectome"]:
-            d, p = _paired(mc[mc["wiring"] == "connectome"]["memory_capacity"],
-                           mc[mc["wiring"] == other]["memory_capacity"])
-            rows.append({"ticker": "-", "comparison": f"connectome vs {other}", "d_memory_capacity": d,
-                         "p_memory_capacity": p})
+            row = {"ticker": "-", "comparison": f"connectome vs {other}"}
+            for col in cols:
+                row[f"d_{col}"], row[f"p_{col}"] = _paired(mc[mc["wiring"] == "connectome"][col],
+                                                           mc[mc["wiring"] == other][col])
+            rows.append(row)
     return pd.DataFrame(rows), ensembles
 
 
@@ -313,15 +322,29 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
 
     if "memory_capacity" in graph.columns:
         mc_cmp = comparisons[comparisons["ticker"] == "-"].set_index("comparison") if len(comparisons) else None
+        noisy = "memory_capacity_noisy" in graph.columns
+        noise = cfg.memory.readout_noise
+
+        def diff(key, col):
+            ok = mc_cmp is not None and key in mc_cmp.index and f"d_{col}" in mc_cmp.columns
+            return _dp(mc_cmp.loc[key, f"d_{col}"], mc_cmp.loc[key, f"p_{col}"], 2) if ok else "-"
+
         lines += ["", "## Memory capacity (market-free benchmark)", "",
-                  f"Sum over delays 1..{cfg.memory.max_delay} of R² for reconstructing past i.i.d. inputs.", "",
-                  "| wiring | memory capacity | connectome minus this |", "|---|---|---|"]
+                  f"Sum over delays 1..{cfg.memory.max_delay} of R² for reconstructing past i.i.d. inputs. "
+                  + (f"*With readout noise* adds noise of std {noise:g} to every readout neuron ({noise:.1%} of its "
+                     "range) before fitting, so only memory that survives a little noise counts; the noise-free "
+                     "number is the standard benchmark but can come from fluctuations of a millionth." if noisy else ""),
+                  "",
+                  "| wiring | memory (noise-free) | connectome minus this |"
+                  + (" memory with readout noise | connectome minus this |" if noisy else ""),
+                  "|---|---|---|" + ("---|---|" if noisy else "")]
         for w in cfg.wirings:
-            g = graph[graph["wiring"] == w]["memory_capacity"]
+            g = graph[graph["wiring"] == w]
             key = f"connectome vs {w}"
-            diff = _dp(mc_cmp.loc[key, "d_memory_capacity"], mc_cmp.loc[key, "p_memory_capacity"], 2) \
-                if mc_cmp is not None and key in mc_cmp.index else "-"
-            lines.append(f"| {w} | {_pm(g, 2)} | {diff} |")
+            line = f"| {w} | {_pm(g['memory_capacity'], 2)} | {diff(key, 'memory_capacity')} |"
+            if noisy:
+                line += f" {_pm(g['memory_capacity_noisy'], 2)} | {diff(key, 'memory_capacity_noisy')} |"
+            lines.append(line)
 
     gain_label = "raw spectral radius" if rc.normalize == "spectral" else "raw bulk scale"
     has_stab = "unstable_readouts" in graph.columns

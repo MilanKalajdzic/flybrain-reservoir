@@ -146,7 +146,11 @@ same fitting code.
 ### Market-free benchmarks
 - **Memory capacity** (Jaeger 2001): feed white noise, train readouts to reconstruct the input
   from k steps ago, sum the R² over k. It shows how much input history each wiring keeps, which is
-  a cleaner test of "is the wiring special" than noisy market returns.
+  a cleaner test of "is the wiring special" than noisy market returns. Reported twice: noise-free
+  (the standard benchmark) and **with readout noise** (0.1% of a neuron's range added before
+  fitting, `memory.readout_noise`). The noise-free readout rescales every neuron and can decode
+  fluctuations of a millionth, which no physical system could carry; on the fly that was more than
+  half of its measured memory. The noisy number counts only memory that is actually usable.
 - **Readout stability**: run the reservoir twice with inputs that differ only in the distant past.
   *Unstable readouts* end up in different states (they latched or went chaotic); a valid reservoir
   has none. *Active readouts* are the ones that move at all. Both are reported per wiring in every
@@ -198,6 +202,7 @@ python scripts/run_experiment.py --config configs/small.yaml
 python scripts/brain_activity.py --config configs/small.yaml
 python scripts/gain_sweep.py --config configs/small.yaml     # each wiring at its own best gain
 python scripts/hot_spots.py --config configs/small.yaml      # where the dominant eigenvalue lives
+python scripts/report.py                                      # headline numbers from all finished runs
 ```
 
 Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/` have the rest.
@@ -314,7 +319,7 @@ src/flyres/
   plotting.py     figures and the brain animation
   synthetic.py    fake data for tests and the offline demo
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
-                  gain_sweep.py, hot_spots.py
+                  gain_sweep.py, hot_spots.py, report.py
 configs/          small.yaml (laptop), full.yaml (whole CNS), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
 docs/img/         figures used in this README

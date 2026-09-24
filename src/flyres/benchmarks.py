@@ -13,24 +13,44 @@ from .readout import ridge_multi
 from .reservoir import Reservoir
 
 
-def memory_capacity(reservoir: Reservoir, record_idx, n_steps: int = 3000, max_delay: int = 100,
-                    washout: int = 200, rng: np.random.Generator | None = None, alpha: float = 1e-4):
-    """Returns (total MC, array of MC_k for k = 1..max_delay). Needs a reservoir built with n_features=1."""
+def memory_capacities(reservoir: Reservoir, record_idx, noise_levels=(0.0,), n_steps: int = 3000,
+                      max_delay: int = 100, washout: int = 200, rng: np.random.Generator | None = None,
+                      alpha: float = 1e-4) -> dict:
+    """Memory capacity at several readout-noise levels from one reservoir run.
+
+    Noise level s adds Gaussian noise with std s to every recorded state (states live in [-1, 1], so
+    s = 0.001 is 0.1% of a neuron's range) before the readout is fitted. Without noise, the readout
+    standardizes every neuron and can exploit fluctuations of a millionth that no physical system could
+    carry; with a little noise, only memory that is actually usable counts.
+
+    Returns {noise level: (total MC, array of MC_k for k = 1..max_delay)}. Needs n_features=1.
+    """
     rng = rng if rng is not None else np.random.default_rng()
-    u = rng.uniform(-1.0, 1.0, size=(n_steps, 1)).astype(np.float32)
+    u = rng.uniform(-1.0, 1.0, size=(n_steps, 1)).astype(np.float32)  # drawn first: noise-free result unchanged
     S = reservoir.run(u, record_idx=record_idx)
     t = np.arange(washout + max_delay, n_steps)  # rows where every delay is available
-    X = S[t]
     Y = np.stack([u[t - k, 0] for k in range(1, max_delay + 1)], axis=1).astype(np.float64)
     split = len(t) * 2 // 3
-    pred = ridge_multi(X[:split], Y[:split], X[split:], alpha)
     Yt = Y[split:]
-    pc = pred - pred.mean(axis=0)
     yc = Yt - Yt.mean(axis=0)
-    denom = np.sqrt((pc ** 2).sum(axis=0) * (yc ** 2).sum(axis=0))
-    r = np.where(denom > 0, (pc * yc).sum(axis=0) / np.where(denom > 0, denom, 1.0), 0.0)
-    mc = r ** 2
-    return float(mc.sum()), mc
+    out = {}
+    for s in noise_levels:
+        X = S[t].astype(np.float64)
+        if s > 0:
+            X = X + rng.normal(0.0, s, size=X.shape)
+        pred = ridge_multi(X[:split], Y[:split], X[split:], alpha)
+        pc = pred - pred.mean(axis=0)
+        denom = np.sqrt((pc ** 2).sum(axis=0) * (yc ** 2).sum(axis=0))
+        r = np.where(denom > 0, (pc * yc).sum(axis=0) / np.where(denom > 0, denom, 1.0), 0.0)
+        mc = r ** 2
+        out[s] = (float(mc.sum()), mc)
+    return out
+
+
+def memory_capacity(reservoir: Reservoir, record_idx, n_steps: int = 3000, max_delay: int = 100,
+                    washout: int = 200, rng: np.random.Generator | None = None, alpha: float = 1e-4):
+    """Noise-free memory capacity: (total MC, array of MC_k for k = 1..max_delay). See memory_capacities."""
+    return memory_capacities(reservoir, record_idx, (0.0,), n_steps, max_delay, washout, rng, alpha)[0.0]
 
 
 ACTIVE_STD = 1e-3    # a readout whose state moves less than this under white-noise input carries ~nothing

@@ -30,7 +30,7 @@ def main():
     p.add_argument("--config", default="configs/small.yaml")
     p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     p.add_argument("--gains", nargs="+", type=float, default=list(DEFAULT_GAINS),
-                   help=f"targets for the spectral radius (default: {' '.join(map(str, DEFAULT_GAINS))})")
+                   help=f"targets for the spectral radius (default: {' '.join(f'{g:g}' for g in DEFAULT_GAINS)})")
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2],
                    help="seeds (default 0 1 2; fewer than the main experiment because it multiplies by the gains)")
     p.add_argument("--quiet", action="store_true")
@@ -49,7 +49,7 @@ def main():
     save_config(cfg, out / "config_used.yaml")
     (out / "summary.md").write_text(sweep_markdown(cfg, summary, best), encoding="utf-8")
     label = "spectral radius" if cfg.reservoir.normalize == "spectral" else "bulk scale (frobenius)"
-    plt.close(plotting.plot_gain_sweep(summary, label, path=out / "gain_sweep.png"))
+    plt.close(plotting.plot_gain_sweep(summary, label, noise=cfg.memory.readout_noise, path=out / "gain_sweep.png"))
     print(best.to_string(index=False))
     print(f"open {out / 'summary.md'}")
 

@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from flyres.benchmarks import readout_stability
+from flyres.benchmarks import memory_capacities, memory_capacity, readout_stability
 from flyres.config import load_config
 from flyres.diagnostics import hot_spot_cascade, top_mode
 from flyres.experiment import build_matrix, prepare_subgraph
@@ -97,12 +97,21 @@ def test_gain_sweep_end_to_end(tmp_path):
     cfg = _synthetic_cfg(tmp_path, "wirings=[connectome, erdos_renyi]")
     df = run_gain_sweep(cfg, gains=[0.5, 1.0, 8.0], verbose=False)
     assert len(df) == 2 * 2 * 3
-    assert {"memory_capacity", "active_readouts", "unstable_readouts", "echo_gap"} <= set(df.columns)
+    assert {"memory_capacity", "memory_capacity_noisy", "active_readouts", "unstable_readouts",
+            "echo_gap"} <= set(df.columns)
+    assert (df["memory_capacity_noisy"] <= df["memory_capacity"] + 0.5).all()
     summary = summarize_sweep(df)
     assert len(summary) == 2 * 3 and summary["valid"].dtype == bool
     best = best_valid(summary)
     assert list(best["wiring"]) == ["connectome", "erdos_renyi"]
-    assert "best valid gain" in sweep_markdown(cfg, summary, best)
+    assert {"memory_noisy", "memory"} <= set(best.columns)
+    md = sweep_markdown(cfg, summary, best)
+    assert "best valid gain" in md and "memory with readout noise" in md
+    # without readout noise the sweep still works, on noise-free memory only
+    cfg.memory.readout_noise = 0.0
+    df0 = run_gain_sweep(cfg, gains=[1.0], verbose=False)
+    assert "memory_capacity_noisy" not in df0.columns
+    assert "memory_noisy" not in best_valid(summarize_sweep(df0)).columns
 
 
 @pytest.mark.parametrize("script, args, produced", [
@@ -119,3 +128,30 @@ def test_scripts_run(tmp_path, script, args, produced):
     run = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     assert run.returncode == 0, run.stderr[-2000:]
     assert (tmp_path / "t" / produced).exists()
+
+
+def test_readout_noise_removes_memory_hidden_in_tiny_fluctuations(sub):
+    """With a tiny input signal the states wiggle by ~1e-6: a noise-free readout still decodes it, a readout
+    that sees 0.1% noise can't. That is exactly the fragile memory the noisy number is meant to exclude."""
+    W, _ = scale_weights(signed_weights(sub.W, sub.sign), 0.9)
+    kw = dict(n_steps=1500, max_delay=20, washout=100)
+    faint = Reservoir(W, sub.input_idx, 1, input_scaling=1e-6, rng=np.random.default_rng(0))
+    caps = memory_capacities(faint, None, (0.0, 1e-3), rng=np.random.default_rng(1), **kw)
+    assert caps[0.0][0] > 3 * caps[1e-3][0]
+    assert caps[0.0][0] == pytest.approx(memory_capacity(faint, None, rng=np.random.default_rng(1), **kw)[0])
+    faint_noisy = caps[1e-3][0]
+    normal = Reservoir(W, sub.input_idx, 1, rng=np.random.default_rng(0))
+    caps = memory_capacities(normal, None, (0.0, 1e-3), rng=np.random.default_rng(1), **kw)
+    assert caps[1e-3][0] > 10 * faint_noisy  # a properly driven reservoir keeps real, noise-proof memory
+
+
+def test_report_script(tmp_path):
+    from flyres.experiment import run_experiment
+
+    cfg = _synthetic_cfg(tmp_path, "market.source=synthetic", "market.synthetic_days=1500", "eval.train_min=400",
+                         "eval.refit_every=300", "eval.n_boot=100", "wirings=[connectome, erdos_renyi]")
+    run_experiment(cfg, verbose=False)
+    run = subprocess.run([sys.executable, str(REPO / "scripts" / "report.py"), str(tmp_path / "t")],
+                         capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stderr[-2000:]
+    assert "memory (readout noise)" in run.stdout and "| connectome |" in run.stdout

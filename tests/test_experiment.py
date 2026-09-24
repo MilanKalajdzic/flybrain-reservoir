@@ -47,7 +47,9 @@ def test_end_to_end_synthetic(tmp_path, n_jobs):
         assert (out / f).exists(), f
     assert "Connectome minus each alternative" in res.summary
     assert "top mode spread" in res.summary and "active readouts" in res.summary
-    assert {"top_mode_spread", "active_readouts", "unstable_readouts", "echo_gap"} <= set(res.graph.columns)
+    assert {"top_mode_spread", "active_readouts", "unstable_readouts", "echo_gap",
+            "memory_capacity_noisy"} <= set(res.graph.columns)
+    assert "memory with readout noise" in res.summary
     assert (res.graph["unstable_readouts"] == 0).all()  # default gain 0.9 must give valid reservoirs
     # every model is evaluated on exactly the same days
     assert res.metrics["n_test"].nunique() == 1

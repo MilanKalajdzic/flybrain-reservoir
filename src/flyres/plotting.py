@@ -336,34 +336,42 @@ def animate_brain(glow: pd.DataFrame, xy: np.ndarray, input_idx, close: pd.Serie
     return path
 
 
-def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", path=None):
-    """Memory capacity against gain, one line per wiring (mean over seeds).
+def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", noise: float | None = None,
+                    path=None):
+    """Memory capacity against gain, one line per wiring (mean over seeds). With readout-noise results,
+    two panels on the same y scale: with noise (left) and noise-free (right).
     Filled markers = valid reservoir, hollow = some readouts latch or go chaotic."""
-    fig, ax = _figure(figsize=(6.8, 3.9))
-    for w in [w for w in WIRINGS if w in set(summary["wiring"])]:
-        g = summary[summary["wiring"] == w].sort_values("gain")
-        color = WIRING_COLORS[w]
-        main = w == "connectome"
-        ax.plot(g["gain"], g["memory"], color=color, linewidth=2.4 if main else 1.6, zorder=3 if main else 2,
-                label=LABELS[w], **LINE)
-        ok = g["valid"].to_numpy()
-        ax.scatter(g["gain"][ok], g["memory"][ok], s=46, color=color, edgecolors=SURFACE, linewidths=2,
-                   zorder=4)
-        ax.scatter(g["gain"][~ok], g["memory"][~ok], s=40, facecolors=SURFACE, edgecolors=color, linewidths=1.6,
-                   zorder=4)
-    ax.set_xscale("log")
+    panels = [("memory", "Noise-free (standard benchmark)")]
+    if "memory_noisy" in summary.columns:
+        label = f"With readout noise ({noise:.1%} of range)" if noise else "With readout noise"
+        panels = [("memory_noisy", label)] + panels
+    fig, axes = _figure(len(panels), figsize=(5.2 * len(panels) + 1.6, 4.1), sharey=True)
+    axes = np.atleast_1d(axes)
     lo, hi = summary["gain"].min(), summary["gain"].max()
-    labelled = [g for g in (0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 20, 30, 50, 100) if lo <= g <= hi]
-    ax.set_xticks(labelled)
-    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    ax.xaxis.set_minor_locator(mticker.NullLocator())
-    ax.set_ylim(bottom=0)
-    ax.set_xlabel(gain_label)
-    ax.set_ylabel("memory capacity")
-    ax.set_title("Memory capacity at each gain", loc="left", fontsize=11, fontweight="bold", color=INK, pad=20)
-    ax.text(0, 1.02, "Mean over seeds. Hollow = invalid reservoir (some neurons latch or go chaotic).",
-            transform=ax.transAxes, fontsize=8.5, color=INK_2, va="bottom")
-    _legend(ax, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    labelled = [g for g in (0.25, 0.5, 1, 2, 3, 6, 12, 20, 30, 50, 100) if lo <= g <= hi]
+    for ax, (col, title) in zip(axes, panels):
+        for w in [w for w in WIRINGS if w in set(summary["wiring"])]:
+            g = summary[summary["wiring"] == w].sort_values("gain")
+            color = WIRING_COLORS[w]
+            main = w == "connectome"
+            ax.plot(g["gain"], g[col], color=color, linewidth=2.4 if main else 1.6, zorder=3 if main else 2,
+                    label=LABELS[w], **LINE)
+            ok = g["valid"].to_numpy()
+            ax.scatter(g["gain"][ok], g[col][ok], s=46, color=color, edgecolors=SURFACE, linewidths=2, zorder=4)
+            ax.scatter(g["gain"][~ok], g[col][~ok], s=40, facecolors=SURFACE, edgecolors=color, linewidths=1.6,
+                       zorder=4)
+        ax.set_xscale("log")
+        ax.set_xticks(labelled)
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+        ax.xaxis.set_minor_locator(mticker.NullLocator())
+        ax.set_xlabel(gain_label)
+        ax.set_title(title, loc="left", fontsize=9.5, color=INK_2)
+    axes[0].set_ylim(bottom=0)
+    axes[0].set_ylabel("memory capacity")
+    fig.suptitle("Memory capacity at each gain", x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.04)
+    fig.text(0.01, 0.975, "Mean over seeds. Hollow = invalid reservoir (some neurons latch or go chaotic).",
+             ha="left", fontsize=8.5, color=INK_2)
+    _legend(axes[-1], loc="upper left", bbox_to_anchor=(1.02, 1.0))
     fig.tight_layout()
     return _save(fig, path)
 
