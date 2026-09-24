@@ -49,6 +49,7 @@ def test_every_figure_shows_in_a_notebook(neurons, tmp_path, monkeypatch):
         "argv": [sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}"],
         "display_name": "flyres test", "language": "python"}))
     monkeypatch.setenv("JUPYTER_PATH", str(tmp_path))
+    monkeypatch.delenv("MPLBACKEND", raising=False)  # a forced backend (e.g. Agg on CI) would override inline
     setup = ("import numpy as np, pandas as pd\nfrom flyres import plotting\n"
              "neu = pd.DataFrame({'in_degree': np.arange(1, 50), 'out_degree': np.arange(1, 50)})")
     nb = nbformat.v4.new_notebook()

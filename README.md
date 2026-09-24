@@ -1,5 +1,7 @@
 # flybrain-reservoir
 
+[![tests](https://github.com/MilanKalajdzic/flybrain-reservoir/actions/workflows/tests.yml/badge.svg)](https://github.com/MilanKalajdzic/flybrain-reservoir/actions/workflows/tests.yml)
+
 **Does a real fruit fly brain make a better forecasting machine than random wiring?**
 
 <p align="center">
