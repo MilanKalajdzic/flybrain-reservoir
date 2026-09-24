@@ -78,6 +78,27 @@ def test_readout_stability(sub):
     assert readout_stability(silent, np.arange(5, 40), rng=np.random.default_rng(1))["active_readouts"] == 0
 
 
+def test_readout_stability_several_tests(sub):
+    """n_tests=1 is the classic single test; more tests run batched and the worst one counts."""
+    W, _ = scale_weights(signed_weights(sub.W, sub.sign), 0.9)
+    res = Reservoir(W * np.float32(2.5), sub.input_idx, 1, bias_scaling=0.0, rng=np.random.default_rng(0))
+    rec = sub.readout_pool[:80]
+    rng = np.random.default_rng(3)
+    u1 = rng.uniform(-1.0, 1.0, size=(500, 1)).astype(np.float32)
+    u2 = u1.copy()
+    u2[:200] = rng.uniform(-1.0, 1.0, size=(200, 1))
+    s1, s2 = res.run(u1, rec), res.run(u2, rec)
+    one = readout_stability(res, rec, n_steps=500, perturb=200, rng=np.random.default_rng(3))
+    assert one["unstable_readouts"] == pytest.approx(float((np.abs(s1[-1] - s2[-1]) > 1e-3).mean()), abs=1e-6)
+    assert one["active_readouts"] == pytest.approx(float((s1[200:].std(axis=0) >= 1e-3).mean()), abs=1e-6)
+    many = readout_stability(res, rec, n_steps=500, perturb=200, rng=np.random.default_rng(3), n_tests=4)
+    assert many["unstable_readouts"] >= one["unstable_readouts"] and many["echo_gap"] >= one["echo_gap"] - 1e-6
+    # identity flip-flops: each test latches half of them one way or the other, every test finds it
+    latching = Reservoir(sp.identity(40, format="csr") * 4.0, np.arange(40), 1, input_scaling=0.1,
+                         bias_scaling=0.0, rng=np.random.default_rng(0))
+    assert readout_stability(latching, rng=np.random.default_rng(1), n_tests=3)["unstable_readouts"] > 0.25
+
+
 def _synthetic_cfg(tmp_path, *extra):
     return load_config(None, [
         "name=t", f"output_dir={tmp_path.as_posix()}", "n_jobs=1", "seeds=[0, 1]",

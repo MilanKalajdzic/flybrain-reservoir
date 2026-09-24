@@ -27,7 +27,8 @@ from .reservoir import Reservoir
 from .subgraph import Subgraph
 
 DEFAULT_GAINS = (0.5, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 20.0)
-STABLE_MAX_UNSTABLE = 0.01  # a gain counts as valid if at most 1% of readouts are unstable, for every seed
+STABLE_MAX_UNSTABLE = 0.01  # a gain counts as valid if at most 1% of readouts are unstable, in every latching
+                            # test (memory.stability_tests per seed) and for every seed
 
 
 def sweep_job(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: int, gains) -> list[dict]:
@@ -46,7 +47,8 @@ def sweep_job(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: int, gain
         row = {"wiring": wiring, "seed": seed, "gain": float(gain), "memory_capacity": caps[0.0][0]}
         if mcfg.readout_noise > 0:
             row["memory_capacity_noisy"] = caps[mcfg.readout_noise][0]
-        rows.append({**row, **readout_stability(res, readout_idx, rng=np.random.default_rng([seed, 6]))})
+        rows.append({**row, **readout_stability(res, readout_idx, rng=np.random.default_rng([seed, 6]),
+                                                n_tests=mcfg.stability_tests)})
     rows[-1]["seconds"] = time.time() - t0
     return rows
 
@@ -131,7 +133,7 @@ def sweep_markdown(cfg: ExperimentConfig, summary: pd.DataFrame, best: pd.DataFr
     lines = [f"# Gain sweep: {cfg.name}", "",
              f"Memory capacity (delays 1..{cfg.memory.max_delay}) of every wiring at each {what}, "
              f"{len(cfg.seeds)} seed(s). A gain is valid when at most {max_unstable:.0%} of readouts are unstable "
-             "for every seed.", ""]
+             f"in every latching test ({cfg.memory.stability_tests} per seed) and for every seed.", ""]
     if noisy:
         lines += [f"*With readout noise*: noise of std {noise:g} ({noise:.1%} of a neuron's range) is added to every "
                   "readout before fitting, so only memory that survives a little noise counts. Best gains are picked "

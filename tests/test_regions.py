@@ -14,7 +14,7 @@ import scipy.sparse as sp  # noqa: E402
 from flyres.config import load_config  # noqa: E402
 from flyres.plotting import plot_region_gains  # noqa: E402
 from flyres.regions import (MAX_FACTOR, geo_mean_factors, internal_radius, neuron_regions,  # noqa: E402
-                            region_markdown, run_region_search, scale_rows)
+                            region_markdown, run_region_search, scale_rows, single_gain_peaks)
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -39,6 +39,17 @@ def test_scale_rows_and_internal_radius():
     np.testing.assert_allclose(rad, [np.sqrt(6.0), 2.0], rtol=1e-6)  # 2-cycles: sqrt(2*3) and sqrt(4*1)
 
 
+def test_single_gain_peaks():
+    """Two humps (edge of chaos near 1, saturated regime at high gain), an invalid gain in between."""
+    mem = {0.5: 3.6, 1.0: 6.3, 1.5: 5.3, 2.0: 4.7, 4.0: 5.0, 8.0: 5.9, 12.0: 6.2, 20.0: 5.7}
+    rows = [{"gain": g, "m": m, "valid": g != 4.0} for g, m in mem.items()]
+    assert [r["gain"] for r in single_gain_peaks(rows, "m")] == [1.0, 12.0]
+    assert [r["gain"] for r in single_gain_peaks(rows, "m", k=1)] == [1.0]
+    rows = [{"gain": g, "m": g, "valid": True} for g in (0.5, 1.0, 2.0)]  # monotone: one peak, at the end
+    assert [r["gain"] for r in single_gain_peaks(rows, "m")] == [2.0]
+    assert single_gain_peaks([{"gain": 1.0, "m": 1.0, "valid": False}], "m") == []
+
+
 def _cfg(tmp_path):
     return load_config(None, [
         "name=t", f"output_dir={tmp_path.as_posix()}", "n_jobs=1", "seeds=[0, 1]",
@@ -55,7 +66,8 @@ def test_region_search_end_to_end(tmp_path):
     assert (results["picked_regions"] >= results["picked_single"]).all()
     for tag in ("single", "regions"):
         assert {f"memory_{tag}", f"memory_noisy_{tag}", f"valid_{tag}", f"active_readouts_{tag}"} <= set(results)
-    assert results["single_gain"].isin([0.5, 1.0, 2.0]).all()
+    assert results["single_gain"].isin([0.5, 1.0, 2.0]).all() and results["start_gain"].isin([0.5, 1.0, 2.0]).all()
+    assert all(f"{g:g}" in s.split(";") for g, s in zip(results["start_gain"], results["starts_tried"]))
     assert (regions["factor"] > 0).all() and (regions["factor"] <= MAX_FACTOR).all()
     n_regions = regions["region"].nunique()
     assert len(regions) == 4 * n_regions and n_regions >= 2
@@ -65,7 +77,7 @@ def test_region_search_end_to_end(tmp_path):
     factors = geo_mean_factors(regions)
     assert list(factors.columns) == ["connectome", "erdos_renyi"]
     md = region_markdown(cfg, results, regions)
-    assert "Per-region gains" in md and "fresh input" in md and "| connectome |" in md
+    assert "Per-region gains" in md and "fresh input" in md and "| connectome |" in md and "search from" in md
     plt.close(plot_region_gains(results, regions, noise=cfg.memory.readout_noise, path=tmp_path / "r.png"))
     assert (tmp_path / "r.png").exists()
 

@@ -8,9 +8,12 @@ incoming synapses are multiplied by its region's factor, and a coordinate search
 factors with the most memory while the reservoir stays valid.
 
 Fair to every wiring: the same neurons carry the same region labels in every wiring, and every
-wiring gets the same search. The search starts from the wiring's best single gain, so any
-improvement comes from the per-region freedom. Factors are picked on one white-noise input and the
-reported numbers come from a fresh one, so the search can't just fit that input's quirks.
+wiring gets the same search. The search starts from the best peaks of the wiring's own single-gain
+curve, so any improvement over the best single gain comes from the per-region freedom. Factors are
+picked on one set of white-noise inputs and the reported numbers come from fresh ones, so the search
+can't just fit those inputs' quirks. A setting only counts as valid if it passes several independent
+latching tests (memory.stability_tests); with one test, the search drifts to settings that latch for
+some inputs and not for others.
 """
 from __future__ import annotations
 
@@ -79,8 +82,9 @@ def internal_radius(W: sp.spmatrix, codes: np.ndarray, n_regions: int) -> np.nda
 
 def evaluate(sub: Subgraph, cfg: ExperimentConfig, W, readout_idx, seed: int, fresh: bool = False) -> dict:
     """Memory (noise-free and with readout noise) and readout stability of one matrix. The reservoir's
-    input weights and bias are the experiment's; the white-noise test input is the gain sweep's
-    (`fresh=False`, used to pick gains) or a new one never used for picking (`fresh=True`)."""
+    input weights and bias are the experiment's; the white-noise inputs (memory test and latching tests)
+    are the gain sweep's (`fresh=False`, used to pick gains) or new ones never used for picking
+    (`fresh=True`)."""
     mc = cfg.memory
     k = 7 if fresh else 5
     res = Reservoir(W, sub.input_idx, 1, rng=np.random.default_rng([seed, 4]), **reservoir_kwargs(cfg))
@@ -89,16 +93,29 @@ def evaluate(sub: Subgraph, cfg: ExperimentConfig, W, readout_idx, seed: int, fr
     out = {"memory": caps[0.0][0]}
     if mc.readout_noise > 0:
         out["memory_noisy"] = caps[mc.readout_noise][0]
-    out.update(readout_stability(res, readout_idx, rng=np.random.default_rng([seed, k + 1])))
+    out.update(readout_stability(res, readout_idx, rng=np.random.default_rng([seed, k + 1]),
+                                 n_tests=mc.stability_tests))
     out["valid"] = out["unstable_readouts"] <= STABLE_MAX_UNSTABLE
     return out
 
 
+def single_gain_peaks(rows: list[dict], metric: str, k: int = 2) -> list[dict]:
+    """The best `k` local maxima of memory along the valid single gains (rows sorted by gain), best first.
+    The curve often has two: near the edge of chaos (gain ~1) and in a saturated regime at high gain."""
+    ok = [r for r in rows if r["valid"]]
+    peaks = [r for i, r in enumerate(ok)
+             if (i == 0 or r[metric] >= ok[i - 1][metric]) and (i == len(ok) - 1 or r[metric] > ok[i + 1][metric])]
+    return sorted(peaks, key=lambda r: -r[metric])[:k]
+
+
 def region_search_job(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: int, codes: np.ndarray,
-                      regions: list[str], gains=DEFAULT_GAINS, steps=SEARCH_STEPS) -> dict:
-    """One wiring and seed. Stage 1: best valid single gain (like the gain sweep, for this seed).
-    Stage 2: from there, go through the regions biggest first and move each one's factor up (or down)
-    while memory improves and the reservoir stays valid; then repeat with smaller steps."""
+                      regions: list[str], gains=DEFAULT_GAINS, steps=SEARCH_STEPS, starts: int = 2) -> dict:
+    """One wiring and seed. Stage 1: memory and validity at every single gain (like the gain sweep, for
+    this seed). Stage 2: from each of the `starts` best peaks of that curve, go through the regions biggest
+    first and move each one's factor up (or down) while memory improves and the reservoir stays valid;
+    then repeat with smaller steps. The start that ends highest on the search input wins. Starting from
+    one peak only can get stuck: from a saturated high-gain state the search finds little that a
+    start near gain 1 finds easily."""
     t0 = time.time()
     metric = "memory_noisy" if cfg.memory.readout_noise > 0 else "memory"
     W_base, _, _, raw_gain = build_matrix(sub, cfg, wiring, seed)
@@ -112,34 +129,38 @@ def region_search_job(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: i
                       "region": region, "factor": factor, **r})
         return r
 
-    best, single_gain = None, None
-    for g in sorted(float(x) for x in gains):
-        r = score((W_base * np.float32(g / base)).tocsr(), "single gain", g)
-        if r["valid"] and (best is None or r[metric] > best[metric]):
-            best, single_gain = r, g
-    if best is None:  # nothing valid: fall back to the lowest gain and report it as invalid
-        single_gain = min(gains)
-        best = trace[0]
-    W0 = (W_base * np.float32(single_gain / base)).tocsr()
-    start = best
+    def at_gain(g):
+        return (W_base * np.float32(g / base)).tocsr()
 
-    factors = np.ones(len(regions))
-    for step in steps:
-        for r in range(len(regions)):
-            for direction in (step, 1.0 / step):
-                moved = False
-                while True:
-                    trial = factors.copy()
-                    trial[r] *= direction
-                    if not 1.0 / MAX_FACTOR <= trial[r] <= MAX_FACTOR:
-                        break
-                    res = score(scale_rows(W0, trial[codes]), "regions", single_gain, regions[r], float(trial[r]))
-                    if not (res["valid"] and res[metric] > best[metric] + MIN_IMPROVEMENT):
-                        break
-                    factors, best, moved = trial, res, True
-                if moved:
-                    break  # found the right direction for this region; don't try the other one
-    W1 = scale_rows(W0, factors[codes])
+    singles = [{**score(at_gain(g), "single gain", g), "gain": g} for g in sorted(float(x) for x in gains)]
+    peaks = single_gain_peaks(singles, metric, starts)
+    if not peaks:  # nothing valid: start from the lowest gain and let the search look for a valid setting
+        peaks = [singles[0]]
+    single_gain = peaks[0]["gain"]
+
+    def search(W0, gain, best):
+        factors = np.ones(len(regions))
+        for step in steps:
+            for r in range(len(regions)):
+                for direction in (step, 1.0 / step):
+                    moved = False
+                    while True:
+                        trial = factors.copy()
+                        trial[r] *= direction
+                        if not 1.0 / MAX_FACTOR <= trial[r] <= MAX_FACTOR:
+                            break
+                        res = score(scale_rows(W0, trial[codes]), "regions", gain, regions[r], float(trial[r]))
+                        if not (res["valid"] and res[metric] > best[metric] + MIN_IMPROVEMENT):
+                            break
+                        factors, best, moved = trial, res, True
+                    if moved:
+                        break  # found the right direction for this region; don't try the other one
+        return factors, best
+
+    runs = [(p["gain"], *search(at_gain(p["gain"]), p["gain"], p)) for p in peaks]
+    start_gain, factors, best = max(runs, key=lambda run: run[2][metric])
+    W0 = at_gain(single_gain)
+    W1 = scale_rows(at_gain(start_gain), factors[codes])
 
     fresh0 = evaluate(sub, cfg, W0, readout_idx, seed, fresh=True)
     fresh1 = evaluate(sub, cfg, W1, readout_idx, seed, fresh=True)
@@ -147,7 +168,8 @@ def region_search_job(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: i
     _, spread0, _ = top_mode(W0, seed=seed)
     raw_scale = raw_gain / base  # W_base * raw_scale = the raw signed weights
     result = {"wiring": wiring, "seed": seed, "metric": metric, "single_gain": single_gain,
-              "evals": len(trace), "picked_single": start[metric], "picked_regions": best[metric],
+              "start_gain": start_gain, "starts_tried": ";".join(f"{p['gain']:g}" for p in peaks),
+              "evals": len(trace), "picked_single": peaks[0][metric], "picked_regions": best[metric],
               "spread_single": spread0, "spread_regions": spread1, "radius_regions": rho1,
               "seconds": time.time() - t0}
     for tag, r in (("single", fresh0), ("regions", fresh1)):
@@ -217,26 +239,29 @@ def region_markdown(cfg: ExperimentConfig, results: pd.DataFrame, region_table: 
     noise = cfg.memory.readout_noise
     wirings = _order(results["wiring"])
     lines = [f"# Per-region gains: {cfg.name}", "",
-             f"Every region's incoming synapses get their own factor on top of the wiring's best single gain. "
-             f"{len(cfg.seeds)} seed(s); factors are searched per seed on one white-noise input, and every number "
-             "below comes from a fresh input the search never saw. Valid = at most "
-             f"{STABLE_MAX_UNSTABLE:.0%} of readouts unstable.", ""]
+             "Every region's incoming synapses get their own factor on top of a single gain; the search starts "
+             "from the best peaks of each wiring's single-gain curve. "
+             f"{len(cfg.seeds)} seed(s); factors are searched per seed on one set of white-noise inputs, and every "
+             "number below comes from fresh inputs the search never saw. Valid = at most "
+             f"{STABLE_MAX_UNSTABLE:.0%} of readouts unstable in each of {cfg.memory.stability_tests} latching "
+             "tests.", ""]
     if noisy:
         lines += [f"Memory *with readout noise* (std {noise:g}, {noise:.1%} of a neuron's range) is what the search "
                   "maximizes; noise-free memory is shown for reference.", ""]
-    head = "| wiring | best single gain | "
+    head = "| wiring | best single gain | search from | "
     head += ("memory with noise: single gain | with per-region gains | change | " if noisy else "")
-    head += "noise-free: single gain | with per-region gains | active readouts | valid seeds |"
+    head += "noise-free: single gain | with per-region gains | active readouts | valid on fresh input |"
     lines += ["## Memory on a fresh input", "", head, "|---|" + "---|" * (head.count("|") - 2)]
     for w in wirings:
         r = results[results["wiring"] == w]
-        row = f"| {w} | {', '.join(f'{g:g}' for g in r['single_gain'])} | "
+        row = (f"| {w} | {', '.join(f'{g:g}' for g in r['single_gain'])} | "
+               f"{', '.join(f'{g:g}' for g in r['start_gain'])} | ")
         if noisy:
             d = r["memory_noisy_regions"] - r["memory_noisy_single"]
             row += f"{_pm(r['memory_noisy_single'])} | {_pm(r['memory_noisy_regions'])} | {d.mean():+.1f} | "
         row += (f"{_pm(r['memory_single'])} | {_pm(r['memory_regions'])} | "
                 f"{r['active_readouts_single'].mean():.0%} → {r['active_readouts_regions'].mean():.0%} | "
-                f"{int(r['valid_regions'].sum())}/{len(r)} |")
+                f"{int(r['valid_single'].sum())}/{len(r)} → {int(r['valid_regions'].sum())}/{len(r)} |")
         lines.append(row)
 
     regions = list(dict.fromkeys(region_table["region"]))

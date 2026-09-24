@@ -58,29 +58,39 @@ UNSTABLE_DIFF = 1e-3  # a readout whose final state still depends on inputs from
 
 
 def readout_stability(reservoir: Reservoir, record_idx=None, n_steps: int = 800, perturb: int = 300,
-                      rng: np.random.Generator | None = None) -> dict:
+                      rng: np.random.Generator | None = None, n_tests: int = 1) -> dict:
     """Are the readout neurons alive, and do they forget where they started? (the echo state property)
 
-    Two runs get identical white-noise inputs except for the first `perturb` steps.
+    A test = two runs with identical white-noise inputs except for the first `perturb` steps.
       echo_gap          largest state difference at the end (~0 = the distant past washed out)
       unstable_readouts share of readouts whose end state still differs: they latched onto the distant
                         past or went chaotic (typically a gain well above 1), so the reservoir is invalid
       active_readouts   share of readouts that actually move after the first `perturb` steps; the rest
                         sit at a constant and give the readout nothing to work with
+
+    With `n_tests` > 1, several independent tests run in one batched pass and the worst one counts
+    (unstable_readouts, echo_gap = max over tests; active_readouts = mean). Near the edge a reservoir
+    can have several stable states and only fall into one of them for some inputs, so one test passes
+    by luck surprisingly often: on the 3,000-neuron circuit, one wiring latched in 2 of 6 tests at a
+    gain where the other 4 found nothing. n_tests=1 reproduces the single-test numbers exactly.
     """
     rng = rng if rng is not None else np.random.default_rng()
-    u1 = rng.uniform(-1.0, 1.0, size=(n_steps, 1)).astype(np.float32)
-    u2 = u1.copy()
-    u2[:perturb] = rng.uniform(-1.0, 1.0, size=(perturb, 1))
-    s1, s2 = reservoir.run(u1, record_idx=record_idx), reservoir.run(u2, record_idx=record_idx)
-    diff = np.abs(s1[-1] - s2[-1])
+    streams = []
+    for _ in range(n_tests):  # same draw order as a single test, repeated
+        u1 = rng.uniform(-1.0, 1.0, size=(n_steps, 1)).astype(np.float32)
+        u2 = u1.copy()
+        u2[:perturb] = rng.uniform(-1.0, 1.0, size=(perturb, 1))
+        streams += [u1, u2]
+    S = reservoir.run(np.stack(streams), record_idx=record_idx)  # (2 * n_tests, T, n_recorded)
+    base, other = S[0::2], S[1::2]
+    diff = np.abs(base[:, -1] - other[:, -1])  # (n_tests, n_recorded)
     return {"echo_gap": float(diff.max()),
-            "unstable_readouts": float((diff > UNSTABLE_DIFF).mean()),
-            "active_readouts": float((s1[perturb:].std(axis=0) >= ACTIVE_STD).mean())}
+            "unstable_readouts": float((diff > UNSTABLE_DIFF).mean(axis=1).max()),
+            "active_readouts": float((base[:, perturb:].std(axis=1) >= ACTIVE_STD).mean())}
 
 
 def echo_state_gap(reservoir: Reservoir, record_idx=None, n_steps: int = 800, perturb: int = 300,
-                   rng: np.random.Generator | None = None) -> float:
+                   rng: np.random.Generator | None = None) -> float:  # single test
     """Largest end-state difference between two runs whose inputs differ only in the distant past.
     ~0 means the reservoir forgets its starting point, as it should (see readout_stability)."""
     return readout_stability(reservoir, record_idx, n_steps, perturb, rng)["echo_gap"]

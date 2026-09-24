@@ -171,7 +171,8 @@ def run_job(sub: Subgraph, datasets: dict, cfg: ExperimentConfig, wiring: str, s
         graph["memory_capacity"], mc_curve = caps[0.0]
         if cfg.memory.readout_noise > 0:
             graph["memory_capacity_noisy"] = caps[cfg.memory.readout_noise][0]
-        graph.update(readout_stability(res1, readout_idx, rng=np.random.default_rng([seed, 6])))
+        graph.update(readout_stability(res1, readout_idx, rng=np.random.default_rng([seed, 6]),
+                                       n_tests=cfg.memory.stability_tests))
     return {"wiring": wiring, "seed": seed, "rows": rows, "preds": preds, "graph": graph, "mc": mc_curve,
             "seconds": time.time() - t0}
 

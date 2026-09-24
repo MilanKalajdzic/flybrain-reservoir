@@ -184,7 +184,9 @@ same fitting code.
   is 84% of its measured memory. The noisy number counts only memory that is actually usable.
 - **Readout stability**: run the reservoir twice with inputs that differ only in the distant past.
   *Unstable readouts* end up in different states (they latched or went chaotic); a valid reservoir
-  has none. *Active readouts* are the ones that move at all. Both are reported per wiring in every
+  has none. Four such tests with different inputs, and the worst one counts
+  (`memory.stability_tests`): near the edge a reservoir can latch for some inputs and not others,
+  and a single test passes by luck surprisingly often. *Active readouts* are the ones that move at all. Both are reported per wiring in every
   summary, together with *top mode spread*: roughly how many neurons carry the largest eigenvalue.
 
 ## Setup

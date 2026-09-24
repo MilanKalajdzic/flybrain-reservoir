@@ -80,12 +80,14 @@ def run_report(folder: Path) -> list[str]:
         col = "memory_noisy" if "memory_noisy_single" in r.columns else "memory"
         lines += ["Per-region gains, memory " + ("with readout noise " if col == "memory_noisy" else "")
                   + "on a fresh input", "",
-                  "| wiring | best single gain | per-region gains | change | active readouts |", "|---|---|---|---|---|"]
+                  "| wiring | best single gain | per-region gains | change | active readouts | valid on fresh input |",
+                  "|---|---|---|---|---|---|"]
         for w in order(r["wiring"].unique()):
             s = r[r["wiring"] == w]
             d = (s[f"{col}_regions"] - s[f"{col}_single"]).mean()
             lines.append(f"| {w} | {pm(s[f'{col}_single'])} | {pm(s[f'{col}_regions'])} | {d:+.1f} | "
-                         f"{s['active_readouts_single'].mean():.0%} → {s['active_readouts_regions'].mean():.0%} |")
+                         f"{s['active_readouts_single'].mean():.0%} → {s['active_readouts_regions'].mean():.0%} | "
+                         f"{int(s['valid_single'].sum())}/{len(s)} → {int(s['valid_regions'].sum())}/{len(s)} |")
         lines.append("")
     if len(lines) == 2:
         lines += ["(no results found)", ""]
