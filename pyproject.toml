@@ -24,7 +24,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "ipykernel", "nbformat", "nbclient"]
-gpu = ["torch>=2.2"]
+# GPU: no extra here on purpose. PyPI's torch is the NVIDIA build; AMD cards need the ROCm build
+# from PyTorch's own index (see "GPU (AMD on Linux)" in the README).
 
 [tool.setuptools.packages.find]
 where = ["src"]

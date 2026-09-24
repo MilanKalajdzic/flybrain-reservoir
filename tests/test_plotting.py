@@ -34,15 +34,26 @@ def test_plotting_leaves_global_matplotlib_state_alone(neurons):
     assert {k for k in before if before[k] != after[k]} == set()
 
 
-def test_every_figure_shows_in_a_notebook(neurons):
+def test_every_figure_shows_in_a_notebook(neurons, tmp_path, monkeypatch):
     nbformat = pytest.importorskip("nbformat")
     nbclient = pytest.importorskip("nbclient")
     pytest.importorskip("ipykernel")
+    # A throwaway kernel that runs *this* Python, so the test can't pick up some other "python3"
+    # kernel registered on the machine (one without flyres installed).
+    import json
+    import sys
+
+    spec = tmp_path / "kernels" / "flyres-test"
+    spec.mkdir(parents=True)
+    (spec / "kernel.json").write_text(json.dumps({
+        "argv": [sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}"],
+        "display_name": "flyres test", "language": "python"}))
+    monkeypatch.setenv("JUPYTER_PATH", str(tmp_path))
     setup = ("import numpy as np, pandas as pd\nfrom flyres import plotting\n"
              "neu = pd.DataFrame({'in_degree': np.arange(1, 50), 'out_degree': np.arange(1, 50)})")
     nb = nbformat.v4.new_notebook()
     nb.cells = [nbformat.v4.new_code_cell(setup)] + [
         nbformat.v4.new_code_cell("plotting.plot_degree_ccdf(neu);") for _ in range(3)]
-    nbclient.NotebookClient(nb, timeout=120, kernel_name="python3").execute()
+    nbclient.NotebookClient(nb, timeout=120, kernel_name="flyres-test").execute()
     shown = [any("image/png" in o.get("data", {}) for o in c.outputs) for c in nb.cells[1:]]
     assert shown == [True, True, True]

@@ -109,19 +109,35 @@ same fitting code.
 - **Echo gap**: run the reservoir twice with inputs that differ only in the distant past. A valid
   reservoir ends up in the same state both times (gap ≈ 0). Reported per wiring in every summary.
 
-## Setup (Windows)
+## Setup
 
-```bat
+Linux (or macOS):
+
+```bash
+cd flybrain-reservoir
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pytest
+.venv/bin/python scripts/run_experiment.py --config configs/demo_synthetic.yaml
+```
+
+If `python3 -m venv` fails on Debian or Ubuntu, install the venv module first:
+`sudo apt install python3-venv`. You can also `source .venv/bin/activate` once per terminal and
+then just type `python`.
+
+Windows (PowerShell):
+
+```powershell
 cd flybrain-reservoir
 python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 .venv\Scripts\python -m pytest
-.venv\Scripts\python scripts\run_experiment.py --config configs\demo_synthetic.yaml
 ```
 
-Calling `.venv\Scripts\python` directly skips `activate`, which PowerShell often blocks. The tests
-run on synthetic data in about 15 seconds. The demo runs the whole pipeline offline on a fake
-connectome with a planted signal, just to prove everything works.
+Calling the venv's Python directly skips `activate`, which PowerShell often blocks.
+
+The tests run on synthetic data in about 15 seconds. The demo runs the whole pipeline offline on a
+fake connectome with a planted signal, just to prove everything works.
 
 Notebooks in VS Code: open the `flybrain-reservoir` folder itself and pick the `.venv` kernel. If a
 notebook still says `No module named 'flyres'`, run `%pip install -e "<full path to the repo>"` in a
@@ -129,11 +145,14 @@ cell and restart the kernel.
 
 ## Running it on the real brain
 
-```bat
-python scripts\download_data.py          :: ~1.2 GB from Janelia's public bucket, resumable
-python scripts\build_connectome.py       :: parse + cache the graph (a few minutes, once)
-python scripts\run_experiment.py --config configs\small.yaml
-python scripts\brain_activity.py --config configs\small.yaml
+With the venv activated (`source .venv/bin/activate`), or with `.venv/bin/python` in place of
+`python`:
+
+```bash
+python scripts/download_data.py        # ~1.2 GB from Janelia's public bucket, resumable
+python scripts/build_connectome.py     # parse + cache the graph (a few minutes, once)
+python scripts/run_experiment.py --config configs/small.yaml
+python scripts/brain_activity.py --config configs/small.yaml
 ```
 
 Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/` have the rest.
@@ -144,18 +163,49 @@ experiment.
 
 Override anything from the command line:
 
-```bat
-python scripts\run_experiment.py --config configs\small.yaml --set reservoir.spectral_radius=0.5 --set name=rho05
-python scripts\run_experiment.py --config configs\small.yaml --set reservoir.normalize=frobenius --set reservoir.spectral_radius=0.5 --set name=frob
+```bash
+python scripts/run_experiment.py --config configs/small.yaml --set reservoir.spectral_radius=0.5 --set name=rho05
+python scripts/run_experiment.py --config configs/small.yaml --set reservoir.normalize=frobenius --set reservoir.spectral_radius=0.5 --set name=frob
 ```
 
 ### Scaling up
 - Subgraph size is just `subgraph.n_neurons`; everything is sparse, so 3k to 50k is a config change.
 - `configs/full.yaml` runs the whole CNS (`method: all`) with 4 parallel jobs. Meant for a
   desktop (32 GB RAM is plenty); expect roughly an hour.
-- GPU: `pip install torch` (a ROCm build for AMD cards) and `--set reservoir.backend=torch`.
-  ROCm support on Windows has been patchy, so check the current PyTorch install page first; CPU
-  works fine, just slower.
+
+### GPU (AMD on Linux)
+
+The reservoir runs on the GPU through PyTorch (`reservoir.backend: torch`). AMD cards need
+PyTorch's ROCm build, which only exists for Linux. Plain `pip install torch` gets the NVIDIA build
+instead, so use the ROCm index:
+
+```bash
+.venv/bin/python -m pip install torch --index-url https://download.pytorch.org/whl/rocm7.2
+```
+
+(`rocm7.2` is current as of September 2026; pytorch.org's install selector shows the latest.)
+These wheels bundle the ROCm libraries, so you only need the `amdgpu` kernel driver, which
+mainstream distros ship, and access to the GPU device files:
+
+```bash
+sudo usermod -aG render,video $USER    # then log out and back in
+```
+
+Check it works (the second test runs the reservoir on the GPU and compares it with the CPU version):
+
+```bash
+.venv/bin/python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+.venv/bin/python -m pytest tests/test_reservoir.py -k "torch or gpu" -v
+```
+
+ROCm GPUs show up as `cuda` in PyTorch, so nothing else changes. Then:
+
+```bash
+python scripts/run_experiment.py --config configs/full.yaml --set reservoir.backend=torch
+```
+
+The GPU only pays off for big reservoirs: at 3,000 neurons the CPU is already fast, while at the
+full 166k each time step is a sparse multiply with ~6M connections, which is where the GPU wins.
 
 ## Design decisions (and why)
 

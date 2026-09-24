@@ -80,3 +80,17 @@ def test_torch_backend_matches_numpy(sub):
     a = _reservoir(sub).run(U)
     b = _reservoir(sub, backend="torch", device="cpu").run(U)
     np.testing.assert_allclose(a, b, atol=1e-4)
+
+
+def test_gpu_backend_matches_numpy(sub):
+    """Runs only where PyTorch sees a GPU (NVIDIA, or AMD through ROCm, which also shows up as 'cuda').
+    Checks the sparse matrix multiply works on the card and gives the same states as the CPU."""
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("no GPU visible to PyTorch")
+    U = np.random.default_rng(4).standard_normal((300, 3))
+    a = _reservoir(sub).run(U)
+    b = _reservoir(sub, backend="torch", device="cuda").run(U)
+    batch = _reservoir(sub, backend="torch", device="cuda").run(np.stack([U, U]))
+    np.testing.assert_allclose(a, b, atol=1e-3)
+    np.testing.assert_allclose(batch[1], b, atol=1e-5)

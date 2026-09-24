@@ -1,6 +1,7 @@
 # The whole male CNS (~166k neurons) as the reservoir. Meant for the desktop:
 # ~32 GB RAM is plenty, and n_jobs runs wirings/seeds in parallel processes.
-# Expect roughly an hour on 4 cores; try backend: torch if you get a GPU build working.
+# Expect roughly an hour on 4 CPU cores. With the ROCm build of PyTorch installed (README, "GPU"),
+# add --set reservoir.backend=torch to run the reservoir on the GPU.
 name: full
 seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 wirings: [connectome, degree_preserving, weight_shuffle, sign_shuffle, erdos_renyi]
