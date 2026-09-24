@@ -41,6 +41,7 @@ class ReservoirConfig:
     spectral_radius: float = 0.9
     normalize: str = "spectral"      # spectral | frobenius
     weight_transform: str = "log1p"  # raw | log1p | binary
+    input_normalization: str = "none"  # none | l1 (each neuron's incoming weights sum to 1 in absolute value)
     leak_rate: float = 1.0           # 1 = no per-neuron smoothing: all memory has to come from the wiring
     input_scaling: float = 0.5
     bias_scaling: float = 0.1

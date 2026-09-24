@@ -41,7 +41,8 @@ def main():
     out = Path(args.out or Path(cfg.output_dir) / cfg.name / "brain")
     out.mkdir(parents=True, exist_ok=True)
 
-    sub = prepare_subgraph(cfg, verbose=False)
+    # verbose: the first run builds the connectome cache (a few minutes, once) and prints its progress
+    sub = prepare_subgraph(cfg, verbose=True)
     closes = load_closes(cfg)
     ticker = args.ticker or next(iter(closes))
     close = closes[ticker]

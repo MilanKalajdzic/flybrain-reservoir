@@ -8,10 +8,15 @@ Outputs: summary.md (start here), metrics.csv, comparisons.csv, memory_capacity.
 graph_stats.csv, predictions.parquet, figures/*.png, config_used.yaml.
 """
 import argparse
+import warnings
 
 import matplotlib
 
 matplotlib.use("Agg")  # figures go to files; no window needed
+
+# joblib restarts a worker whose memory grew a lot between jobs (common on the full brain); harmless,
+# no results are lost, but the warning looks alarming.
+warnings.filterwarnings("ignore", message="A worker stopped while some jobs were given to the executor")
 
 from flyres.config import load_config  # noqa: E402
 from flyres.experiment import run_experiment  # noqa: E402

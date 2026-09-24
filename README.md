@@ -21,28 +21,69 @@ biological wiring special as a reservoir, compared to random wiring with matchin
 
 ## Results so far
 
-3,000-neuron circuit, SPY daily, out of sample Sep 2007 to Sep 2026, 5 seeds (`configs/small.yaml`).
+SPY daily, out of sample Sep 2007 to Sep 2026. Two scales: a 3,000-neuron circuit grown from the
+sensory neurons (`configs/small.yaml`, 5 seeds) and the whole CNS, 166,700 neurons (`configs/full.yaml`,
+10 seeds).
 
-- **Markets: no edge, and the wiring doesn't matter.** Every reservoir has an IC around 0.015
-  (t ≈ 1), a hit rate around 53.5% against 54.9% for always being long, and a Sharpe of about 0.5
-  against 0.62 for buy & hold. Connectome vs each control: p between 0.17 and 0.98. The equity
-  curve's lead over buy & hold comes entirely from sidestepping 2008.
-- **Memory: the real wiring remembers less than random wiring.** Memory capacity 9.2 for the
-  connectome vs 10.5 for the degree-preserving shuffle and 11.0 for Erdős–Rényi (both p < 0.001).
-  Shuffling only the synapse strengths changes nothing (9.3), so it's about who connects to whom.
-- **Why:** the fly is full of reciprocal loops (reciprocity 0.36 vs 0.04 after shuffling). They
-  create a few dominant modes: its largest eigenvalue is ~4x the shuffle's (252 vs 65). Rescale
-  every wiring to the same spectral radius and the rest of the fly's spectrum gets squashed
-  (median |λ| 0.03 vs 0.20 for the shuffle), so its activity dies out faster. The gap holds at
-  every spectral radius from 0.5 to 0.99.
-- **No escape hatch through normalization:** giving every wiring the same total synaptic strength
-  instead (`normalize: frobenius`) pushes the fly's top eigenvalue to ~5, and it stops forgetting
-  its starting point (some neurons latch), so that comparison isn't valid. Every run now checks
-  this and flags it.
+**Markets: no edge at either scale, and the wiring doesn't matter.** Every reservoir has an IC around
+0.015 (t ≈ 1), a hit rate below the 54.9% you get by always being long, and a Sharpe around 0.5
+against 0.62 for buy & hold. None of the connectome-vs-control differences is larger than the
+noise (the standard error of a 19-year Sharpe is about 0.23). The equity curve's early lead over
+buy & hold comes entirely from sidestepping 2008.
+
+**Memory, with one gain for every wiring (the standard recipe): the fly remembers less.**
+
+| memory capacity | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
+|---|---|---|---|---|---|
+| 3,000 neurons | 9.2 | 10.5 | 9.3 | 10.0 | 11.0 |
+| whole CNS | 14.1 | 27.7 | 15.7 | 14.0 | 16.7 |
+
+**Why: hot spots.** Every wiring is rescaled so its largest eigenvalue is 0.9. In the fly, that
+eigenvalue (251, against ~34 for the degree-preserving shuffle) lives on ~200 neurons in the
+antennal lobe, the smell center: local interneurons and projection neurons wired into a dense knot
+(38% of all possible connections present, 41 synapses per connection against 14 brain-wide, mostly
+labeled excitatory). Dividing every weight by ~280 to tame that knot silences almost everything
+else: at the standard gain only 3% of the whole-brain readouts move at all, against 94% in the
+degree-preserving shuffle. In the shuffle the top mode is spread over ~17,000 neurons instead.
+
+It's not one knot, either. Remove it and the next hot spot sets the gain (`scripts/hot_spots.py`):
+
+| step | largest eigenvalue | where the hot spot is |
+|---|---|---|
+| 1 | 251 | antennal lobe (213 neurons) |
+| 2 | 206 | optic lobe |
+| 3 | 178 | optic lobe |
+| 4 | 173 | central brain and descending neurons |
+| 5 | 148 | mushroom body (Kenyon cells, output neurons) |
+| 6 | 116 | central complex |
+
+Every brain region has its own dense core, and one global volume knob can only suit the loudest.
+Normalizing each neuron's total input first (`reservoir.input_normalization: l1`) doesn't fix it:
+tiny two-neuron loops then set the gain instead and 95% of the brain stays silent.
+
+**Memory, with each wiring at its own best gain (`scripts/gain_sweep.py`).** Forcing one gain on
+every wiring is arbitrary, so the sweep tries many and keeps each wiring's best *valid* setting,
+where no readout neuron latches onto the distant past or goes chaotic.
 
 <p align="center">
-  <img src="docs/img/memory_capacity.png" width="560" alt="Memory capacity per delay for the connectome and four control wirings">
+  <img src="docs/img/gain_sweep_small.png" width="640" alt="Memory capacity against spectral radius for the connectome and four control wirings, 3,000-neuron circuit">
 </p>
+
+- **3,000 neurons (3 seeds): the fly catches up.** Best valid memory 13.9 at gain 3, against 12.2
+  for the degree-preserving shuffle (at gain 20, with most of it saturated), 11.4 for Erdős–Rényi
+  and 14.7 for the weight shuffle (same connections, synapse counts moved around). In this circuit the next hot spot is much weaker than
+  the antennal lobe (82 vs 251), so the gain can be turned up about 3× to wake the rest before
+  anything latches.
+- **Whole brain: preview from 1 seed, full run pending.** The fly's best valid memory is about 15,
+  at gain 1 to 1.25. Turning it up wakes more of the brain (70% of readouts move at gain 2) but
+  memory *drops*, and past that its cores latch. The degree-preserving shuffle reaches about 40 and
+  Erdős–Rényi about 18. The next hot spots are close behind the first (206, 178, 173…), so there's
+  no headroom.
+
+So the honest answer so far: the fly's wiring isn't a worse reservoir everywhere. It is **a brain
+made of dense modules, and a reservoir with one global gain can't drive all of them at once.** In a
+small circuit with a single dominant module, tuning the gain fixes that; across the whole brain it
+doesn't.
 
 ### What the fly does with the market
 
@@ -106,8 +147,10 @@ same fitting code.
 - **Memory capacity** (Jaeger 2001): feed white noise, train readouts to reconstruct the input
   from k steps ago, sum the R² over k. It shows how much input history each wiring keeps, which is
   a cleaner test of "is the wiring special" than noisy market returns.
-- **Echo gap**: run the reservoir twice with inputs that differ only in the distant past. A valid
-  reservoir ends up in the same state both times (gap ≈ 0). Reported per wiring in every summary.
+- **Readout stability**: run the reservoir twice with inputs that differ only in the distant past.
+  *Unstable readouts* end up in different states (they latched or went chaotic); a valid reservoir
+  has none. *Active readouts* are the ones that move at all. Both are reported per wiring in every
+  summary, together with *top mode spread*: roughly how many neurons carry the largest eigenvalue.
 
 ## Setup
 
@@ -153,11 +196,14 @@ python scripts/download_data.py        # ~1.2 GB from Janelia's public bucket, r
 python scripts/build_connectome.py     # parse + cache the graph (a few minutes, once)
 python scripts/run_experiment.py --config configs/small.yaml
 python scripts/brain_activity.py --config configs/small.yaml
+python scripts/gain_sweep.py --config configs/small.yaml     # each wiring at its own best gain
+python scripts/hot_spots.py --config configs/small.yaml      # where the dominant eigenvalue lives
 ```
 
 Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/` have the rest.
 `brain_activity.py` writes the heatmap and the animation to `results/small/brain/` (pick another
-crash with `--window 2020-01-01 2020-08-31 --name COVID`). `notebooks/01_connectome_tour.ipynb`
+crash with `--window 2020-01-01 2020-08-31 --name COVID`). `gain_sweep.py` writes
+`results/small/gain_sweep/` (summary, CSVs, figure); widen the grid with `--gains 0.5 1 2 3 6 12 20`. `notebooks/01_connectome_tour.ipynb`
 explores the graph and its eigenvalue spectrum, `notebooks/02_results.ipynb` runs and plots an
 experiment.
 
@@ -218,10 +264,13 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
    persistent regressors overfit noisy targets).
 3. **Leak rate 1.0.** No per-neuron smoothing, so all memory has to come from the wiring, which is
    the thing being tested. Leaky neurons add memory that has nothing to do with W.
-4. **Equal spectral radius for every wiring.** The standard echo-state recipe: same overall gain,
-   and every wiring stays a valid reservoir. The catch is that the fly's biggest eigenvalue is an
-   outlier, so matching it squashes the rest of its spectrum; that's the finding above, not a bug.
-   The alternative (same total synaptic strength) overdrives the fly until it latches.
+4. **Equal spectral radius for every wiring, plus a gain sweep.** The main experiment uses the
+   standard echo-state recipe: every wiring rescaled to spectral radius 0.9. That's fair for
+   random graphs, but the fly's largest eigenvalue sits on a small hot spot, so it gets turned down
+   much harder than the controls. `gain_sweep.py` removes that bias by comparing each wiring at its
+   own best valid gain. Two alternatives were tried and rejected: matching total synaptic strength
+   (`normalize: frobenius`) pushes the fly's cores past 1 so they latch, and per-neuron input
+   normalization hands the gain to tiny two-neuron loops.
 5. **Edges need ≥ 5 synapses.** Standard threshold to drop noisy connections (`connectome.min_weight`).
 6. **Inputs = the most-connected sensory neurons**, and the subgraph is grown from them by
    repeatedly adding the neurons most strongly connected to it, so the signal can actually
@@ -240,8 +289,11 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - Rate model, not spiking. A leaky integrate-and-fire version is the obvious next step.
 - The sign rule is an approximation (glutamate isn't inhibitory everywhere, neuromodulators are
   treated as excitatory, "unclear" transmitters default to excitatory).
-- One 3,000-neuron circuit grown from the sensory side; other parts of the brain, or the whole CNS
-  (`configs/full.yaml`), could behave differently.
+- The hot spots depend on the neurotransmitter labels, which are mostly *predictions* from the
+  dataset. The antennal-lobe core is labeled mostly excitatory; if more of it is actually
+  inhibitory, it is less explosive than modeled here.
+- Memory capacity with white-noise input is one benchmark. Other tasks (nonlinear transforms,
+  chaotic time series) could rank the wirings differently.
 
 ## Repo layout
 
@@ -254,12 +306,15 @@ src/flyres/
   market.py       prices -> causal features and targets
   readout.py      ridge regression and walk-forward refits
   metrics.py      IC, hit rate, Sharpe, drawdown, block bootstrap
-  benchmarks.py   memory capacity, echo gap
+  benchmarks.py   memory capacity, readout stability (active / unstable readouts)
+  diagnostics.py  where the dominant eigenvalue lives, hot-spot cascade
+  sweep.py        gain sweep: each wiring at its own best valid gain
   activity.py     neuron groups, activity relative to normal, soma positions
   experiment.py   runs everything and writes results
   plotting.py     figures and the brain animation
   synthetic.py    fake data for tests and the offline demo
-scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py
+scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
+                  gain_sweep.py, hot_spots.py
 configs/          small.yaml (laptop), full.yaml (whole CNS), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
 docs/img/         figures used in this README

@@ -36,6 +36,27 @@ def signed_weights(W_counts: sp.spmatrix, sign: np.ndarray, transform: str = "lo
     return (W @ sp.diags(np.asarray(sign, dtype=np.float32))).tocsr()
 
 
+INPUT_NORMALIZATIONS = ("none", "l1")
+
+
+def normalize_inputs(W: sp.spmatrix, method: str = "none") -> sp.csr_matrix:
+    """Per-neuron gain. "l1": divide each neuron's incoming weights by their total absolute size, so every
+    neuron gets the same total drive (a crude version of homeostatic synaptic scaling). Neurons with
+    no inputs stay at zero. Applied before the global rescaling.
+
+    On the fly connectome this backfires: neurons with a single input partner get a weight of exactly 1,
+    and tiny two-neuron loops then set the spectral radius instead of the dense hot spots.
+    """
+    if method == "none":
+        return sp.csr_matrix(W)
+    if method != "l1":
+        raise ValueError(f"input_normalization must be one of {INPUT_NORMALIZATIONS}")
+    W = sp.csr_matrix(W, dtype=np.float32, copy=True)
+    total = np.asarray(abs(W).sum(axis=1)).ravel()
+    scale = np.divide(1.0, total, out=np.zeros_like(total), where=total > 0).astype(np.float32)
+    return (sp.diags(scale) @ W).tocsr()
+
+
 def spectral_radius(W: sp.spmatrix, seed: int = 0) -> float:
     """Largest |eigenvalue|. Dense for small matrices, ARPACK otherwise, power iteration as fallback."""
     n = W.shape[0]

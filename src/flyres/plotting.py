@@ -336,6 +336,38 @@ def animate_brain(glow: pd.DataFrame, xy: np.ndarray, input_idx, close: pd.Serie
     return path
 
 
+def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", path=None):
+    """Memory capacity against gain, one line per wiring (mean over seeds).
+    Filled markers = valid reservoir, hollow = some readouts latch or go chaotic."""
+    fig, ax = _figure(figsize=(6.8, 3.9))
+    for w in [w for w in WIRINGS if w in set(summary["wiring"])]:
+        g = summary[summary["wiring"] == w].sort_values("gain")
+        color = WIRING_COLORS[w]
+        main = w == "connectome"
+        ax.plot(g["gain"], g["memory"], color=color, linewidth=2.4 if main else 1.6, zorder=3 if main else 2,
+                label=LABELS[w], **LINE)
+        ok = g["valid"].to_numpy()
+        ax.scatter(g["gain"][ok], g["memory"][ok], s=46, color=color, edgecolors=SURFACE, linewidths=2,
+                   zorder=4)
+        ax.scatter(g["gain"][~ok], g["memory"][~ok], s=40, facecolors=SURFACE, edgecolors=color, linewidths=1.6,
+                   zorder=4)
+    ax.set_xscale("log")
+    lo, hi = summary["gain"].min(), summary["gain"].max()
+    labelled = [g for g in (0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 20, 30, 50, 100) if lo <= g <= hi]
+    ax.set_xticks(labelled)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    ax.xaxis.set_minor_locator(mticker.NullLocator())
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel(gain_label)
+    ax.set_ylabel("memory capacity")
+    ax.set_title("Memory capacity at each gain", loc="left", fontsize=11, fontweight="bold", color=INK, pad=20)
+    ax.text(0, 1.02, "Mean over seeds. Hollow = invalid reservoir (some neurons latch or go chaotic).",
+            transform=ax.transAxes, fontsize=8.5, color=INK_2, va="bottom")
+    _legend(ax, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    fig.tight_layout()
+    return _save(fig, path)
+
+
 def plot_degree_ccdf(neurons: pd.DataFrame, path=None):
     """Complementary CDF of in- and out-degree on log-log axes: heavy tails show up as long straight-ish tails."""
     fig, ax = _figure(figsize=(5.6, 3.6))

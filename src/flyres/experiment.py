@@ -18,14 +18,15 @@ import pandas as pd
 from joblib import Parallel, delayed
 from scipy import stats
 
-from .benchmarks import echo_state_gap, memory_capacity
+from .benchmarks import memory_capacity, readout_stability
 from .config import ExperimentConfig, save_config
 from .connectome import load_connectome
 from .controls import WIRINGS, make_wiring
 from .market import Dataset, download_prices, load_prices_csv, make_dataset
 from .metrics import block_bootstrap_sharpe_diff, evaluate, strategy_returns
 from .readout import walk_forward
-from .reservoir import Reservoir, scale_weights, signed_weights
+from .diagnostics import top_mode
+from .reservoir import Reservoir, normalize_inputs, scale_weights, signed_weights
 from .subgraph import Subgraph, graph_stats, select_subgraph
 from .synthetic import synthetic_connectome, synthetic_prices
 
@@ -107,8 +108,16 @@ def build_matrix(sub: Subgraph, cfg: ExperimentConfig, wiring: str, seed: int):
     rc = cfg.reservoir
     W_counts, sign = make_wiring(wiring, sub.W, sub.sign, np.random.default_rng([seed, 1, WIRINGS.index(wiring)]),
                                  cfg.swaps_per_edge)
-    W, raw_gain = scale_weights(signed_weights(W_counts, sign, rc.weight_transform), rc.spectral_radius, rc.normalize)
+    W = normalize_inputs(signed_weights(W_counts, sign, rc.weight_transform), rc.input_normalization)
+    W, raw_gain = scale_weights(W, rc.spectral_radius, rc.normalize)
     return W, W_counts, sign, raw_gain
+
+
+def readout_neurons(sub: Subgraph, cfg: ExperimentConfig, seed: int) -> np.ndarray:
+    """The neurons the readout listens to for a given seed (same for every wiring of that seed)."""
+    pool = sub.readout_pool
+    return np.sort(np.random.default_rng([seed, 2]).choice(pool, min(cfg.subgraph.n_readout, len(pool)),
+                                                           replace=False))
 
 
 def reservoir_kwargs(cfg: ExperimentConfig) -> dict:
@@ -127,9 +136,7 @@ def run_job(sub: Subgraph, datasets: dict, cfg: ExperimentConfig, wiring: str, s
     t0 = time.time()
     rc, ev = cfg.reservoir, cfg.eval
     W, W_counts, sign, raw_gain = build_matrix(sub, cfg, wiring, seed)
-    pool = sub.readout_pool
-    readout_idx = np.sort(np.random.default_rng([seed, 2]).choice(pool, min(cfg.subgraph.n_readout, len(pool)),
-                                                                  replace=False))
+    readout_idx = readout_neurons(sub, cfg, seed)
     common = reservoir_kwargs(cfg)
 
     rows, preds = [], {}
@@ -148,14 +155,16 @@ def run_job(sub: Subgraph, datasets: dict, cfg: ExperimentConfig, wiring: str, s
                      **evaluate(pred, post.fwd_ret, post.next_ret, ev.position, ev.cost_bps)})
         preds[ticker] = pred
 
-    graph = {"wiring": wiring, "seed": seed, **graph_stats(W_counts, sign), "raw_gain": raw_gain}
+    _, spread, _ = top_mode(W, seed=seed)
+    graph = {"wiring": wiring, "seed": seed, **graph_stats(W_counts, sign), "raw_gain": raw_gain,
+             "top_mode_spread": spread}
     mc_curve = None
     if cfg.memory.enabled:
         res1 = Reservoir(W, sub.input_idx, 1, rng=np.random.default_rng([seed, 4]), **common)
         graph["memory_capacity"], mc_curve = memory_capacity(
             res1, readout_idx, cfg.memory.n_steps, cfg.memory.max_delay, cfg.memory.washout,
             rng=np.random.default_rng([seed, 5]))
-        graph["echo_gap"] = echo_state_gap(res1, readout_idx, rng=np.random.default_rng([seed, 6]))
+        graph.update(readout_stability(res1, readout_idx, rng=np.random.default_rng([seed, 6])))
     return {"wiring": wiring, "seed": seed, "rows": rows, "preds": preds, "graph": graph, "mc": mc_curve,
             "seconds": time.time() - t0}
 
@@ -315,20 +324,30 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
             lines.append(f"| {w} | {_pm(g, 2)} | {diff} |")
 
     gain_label = "raw spectral radius" if rc.normalize == "spectral" else "raw bulk scale"
-    lines += ["", "## Wiring structure (before rescaling)", "",
-              f"| wiring | edges | reciprocity | largest SCC | {gain_label} | echo gap |", "|---|---|---|---|---|---|"]
+    has_stab = "unstable_readouts" in graph.columns
+    lines += ["", "## Wiring structure and dynamics", "",
+              f"| wiring | edges | reciprocity | largest SCC | {gain_label} | top mode spread | active readouts "
+              "| unstable readouts |", "|---|---|---|---|---|---|---|---|"]
     for w in cfg.wirings:
         g = graph[graph["wiring"] == w]
-        echo = f"{g['echo_gap'].max():.0e}" if "echo_gap" in g else "-"
+        spread = f"~{g['top_mode_spread'].mean():,.0f} of {int(g['n'].iloc[0]):,}" if "top_mode_spread" in g else "-"
+        active = f"{g['active_readouts'].mean():.0%}" if has_stab else "-"
+        unstable = f"{g['unstable_readouts'].max():.0%}" if has_stab else "-"
         lines.append(f"| {w} | {int(g['edges'].mean()):,} | {_pm(g['reciprocity'])} | "
-                     f"{_pm(g['largest_scc_frac'], 2)} | {_pm(g['raw_gain'], 2)} | {echo} |")
-    if "echo_gap" in graph.columns:
-        bad = sorted(graph.loc[graph["echo_gap"] > 1e-3, "wiring"].unique())
-        lines += ["", "Echo gap = largest state difference between two runs whose inputs differ only in the distant "
-                      "past (worst seed). Near 0 means the reservoir forgets its starting point, as it should."]
+                     f"{_pm(g['largest_scc_frac'], 2)} | {_pm(g['raw_gain'], 2)} | {spread} | {active} | {unstable} |")
+    lines += ["", "- Raw spectral radius: the largest eigenvalue before rescaling; every weight is divided by it "
+                  f"(times {rc.spectral_radius}).",
+              "- Top mode spread: roughly how many of the network's neurons carry that eigenvalue. A tiny share (say "
+              "a few hundred of 166,700) means a small dense hot spot sets the gain for the whole network "
+              "(`scripts/hot_spots.py` shows where it is).",
+              "- Active readouts: share of readout neurons that move at all under white-noise input (mean over seeds).",
+              "- Unstable readouts: share whose state still depends on inputs from hundreds of steps ago (worst seed). "
+              "Should be 0% for a valid reservoir."]
+    if has_stab:
+        bad = sorted(graph.loc[graph["unstable_readouts"] > 0.01, "wiring"].unique())
         if bad:
-            lines += ["", f"**Warning:** {', '.join(bad)} did not forget its past (some neurons latch), so the gain is "
-                          "too high for a valid reservoir and its results above shouldn't be compared."]
+            lines += ["", f"**Warning:** {', '.join(bad)} did not forget its past (some neurons latch or go chaotic), so "
+                          "the gain is too high for a valid reservoir and its results above shouldn't be compared."]
     lines += ["", "## Reading this", "",
               "- p-values come from paired tests over seeds (seed = input weights, readout neurons, control "
               "randomness). They capture seed-to-seed variation, not luck in the market history; the ensemble "

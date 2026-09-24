@@ -46,6 +46,9 @@ def test_end_to_end_synthetic(tmp_path, n_jobs):
               "figures/equity_SYNTH.png", "figures/memory_capacity.png"]:
         assert (out / f).exists(), f
     assert "Connectome minus each alternative" in res.summary
+    assert "top mode spread" in res.summary and "active readouts" in res.summary
+    assert {"top_mode_spread", "active_readouts", "unstable_readouts", "echo_gap"} <= set(res.graph.columns)
+    assert (res.graph["unstable_readouts"] == 0).all()  # default gain 0.9 must give valid reservoirs
     # every model is evaluated on exactly the same days
     assert res.metrics["n_test"].nunique() == 1
     # the planted signal is found
