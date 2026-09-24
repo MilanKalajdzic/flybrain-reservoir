@@ -19,32 +19,47 @@ networks that keep some of its statistics and scramble the rest.
 The goal isn't to beat the market with a fly. It's a clean answer to a narrower question: *is
 biological wiring special as a reservoir, compared to random wiring with matching statistics?*
 
-## Results so far
+## Results
 
 SPY daily, out of sample Sep 2007 to Sep 2026. Two scales: a 3,000-neuron circuit grown from the
 sensory neurons (`configs/small.yaml`, 5 seeds) and the whole CNS, 166,700 neurons (`configs/full.yaml`,
-10 seeds).
+10 seeds). The gain sweeps use 3 seeds. `scripts/report.py` prints every number below from the
+result folders.
+
+**Short version:** the fly brain is no better at markets than random wiring, and as a memory it's
+worse. Its wiring is a set of dense modules, and a reservoir with one global gain can't drive all of
+them at once. In a small circuit, tuning the gain brings it level with the controls; across the
+whole brain it stays 8–11× behind.
 
 **Markets: no edge at either scale, and the wiring doesn't matter.** Every reservoir has an IC around
-0.015 (t ≈ 1), a hit rate below the 54.9% you get by always being long, and a Sharpe around 0.5
-against 0.62 for buy & hold. None of the connectome-vs-control differences is larger than the
-noise (the standard error of a 19-year Sharpe is about 0.23). The equity curve's early lead over
-buy & hold comes entirely from sidestepping 2008.
+0.015 (t ≈ 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe
+of 0.46 to 0.54 against 0.62 for buy & hold. None of the connectome-vs-control differences is
+larger than the noise (the standard error of a 19-year Sharpe is about 0.23). The equity curve's
+early lead over buy & hold comes entirely from sidestepping 2008.
 
-**Memory, with one gain for every wiring (the standard recipe): the fly remembers less.**
+**Memory at the standard gain: the fly remembers the least.** Memory capacity counts how many past
+steps of a random input a linear readout can recover ([details](#market-free-benchmarks)). The main
+number adds a little readout noise, so it only counts memory a real readout could use:
 
 | memory capacity | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
 |---|---|---|---|---|---|
-| 3,000 neurons | 9.2 | 10.5 | 9.3 | 10.0 | 11.0 |
-| whole CNS | 14.1 | 27.7 | 15.7 | 14.0 | 16.7 |
+| 3,000 neurons, readout noise | **2.8** | 5.9 | 3.0 | 4.6 | 6.9 |
+| whole CNS, readout noise | **2.2** | 15.5 | 2.4 | 2.9 | 7.4 |
+| *3,000 neurons, noise-free* | *9.2* | *10.5* | *9.3* | *10.0* | *11.0* |
+| *whole CNS, noise-free* | *14.1* | *27.7* | *15.7* | *14.0* | *16.7* |
+
+Noise-free, the fly's whole-brain memory looks respectable, but 84% of it lives in fluctuations
+smaller than a thousandth of a neuron's range. With noise, the degree-preserving shuffle remembers
+7× more.
 
 **Why: hot spots.** Every wiring is rescaled so its largest eigenvalue is 0.9. In the fly, that
 eigenvalue (251, against ~34 for the degree-preserving shuffle) lives on ~200 neurons in the
 antennal lobe, the smell center: local interneurons and projection neurons wired into a dense knot
 (38% of all possible connections present, 41 synapses per connection against 14 brain-wide, mostly
 labeled excitatory). Dividing every weight by ~280 to tame that knot silences almost everything
-else: at the standard gain only 3% of the whole-brain readouts move at all, against 94% in the
-degree-preserving shuffle. In the shuffle the top mode is spread over ~17,000 neurons instead.
+else: at the standard gain only 3% of the whole-brain readouts move at all, against 90% in the
+degree-preserving shuffle, whose top mode is spread over ~15,500 neurons instead. The weight and
+sign shuffles keep the fly's connections, so they keep its knots too (3–5% of readouts move).
 
 It's not one knot, either. Remove it and the next hot spot sets the gain (`scripts/hot_spots.py`):
 
@@ -61,29 +76,45 @@ Every brain region has its own dense core, and one global volume knob can only s
 Normalizing each neuron's total input first (`reservoir.input_normalization: l1`) doesn't fix it:
 tiny two-neuron loops then set the gain instead and 95% of the brain stays silent.
 
-**Memory, with each wiring at its own best gain (`scripts/gain_sweep.py`).** Forcing one gain on
-every wiring is arbitrary, so the sweep tries many and keeps each wiring's best *valid* setting,
-where no readout neuron latches onto the distant past or goes chaotic.
+**Memory with each wiring at its own best gain (`scripts/gain_sweep.py`).** Forcing one gain on
+every wiring is arbitrary, so the sweep tries 13 gains from 0.5 to 20 and keeps each wiring's best
+*valid* one: at most 1% of readouts latch onto the distant past or go chaotic, for every seed.
 
 <p align="center">
-  <img src="docs/img/gain_sweep_small.png" width="640" alt="Memory capacity against spectral radius for the connectome and four control wirings, 3,000-neuron circuit">
+  <img src="docs/img/gain_sweep_full.png" width="820" alt="Memory capacity against gain for the connectome and four control wirings across the whole CNS, with and without readout noise">
 </p>
 
-- **3,000 neurons (3 seeds): the fly catches up.** Best valid memory 13.9 at gain 3, against 12.2
-  for the degree-preserving shuffle (at gain 20, with most of it saturated), 11.4 for Erdős–Rényi
-  and 14.7 for the weight shuffle (same connections, synapse counts moved around). In this circuit the next hot spot is much weaker than
-  the antennal lobe (82 vs 251), so the gain can be turned up about 3× to wake the rest before
-  anything latches.
-- **Whole brain: preview from 1 seed, full run pending.** The fly's best valid memory is about 15,
-  at gain 1 to 1.25. Turning it up wakes more of the brain (70% of readouts move at gain 2) but
-  memory *drops*, and past that its cores latch. The degree-preserving shuffle reaches about 40 and
-  Erdős–Rényi about 18. The next hot spots are close behind the first (206, 178, 173…), so there's
-  no headroom.
+| best valid memory, readout noise (gain) | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
+|---|---|---|---|---|---|
+| 3,000 neurons | 6.7 (3) | 6.8 (12) | 7.4 (3) | 6.7 (4) | 7.2 (1) |
+| whole CNS | **2.9** (1.25) | 22.8 (1) | 3.4 (1.25) | 3.7 (1.25) | 30.8 (8) |
 
-So the honest answer so far: the fly's wiring isn't a worse reservoir everywhere. It is **a brain
-made of dense modules, and a reservoir with one global gain can't drive all of them at once.** In a
-small circuit with a single dominant module, tuning the gain fixes that; across the whole brain it
-doesn't.
+- **3,000 neurons: a tie.** Turning the gain up to 3 more than doubles the fly's memory, and every
+  wiring lands between 6.7 and 7.4, within the seed-to-seed spread. In this circuit the next hot
+  spot is much weaker than the antennal lobe (82 vs 251), so the gain can go up about 3× and wake
+  most of the circuit (60% of readouts move) before anything latches. Noise-free, the wirings with
+  the fly's connections even come out ahead (12.8 to 14.7 vs 11.4 to 11.9), but that lead lives in
+  tiny fluctuations and disappears with noise.
+- **Whole brain: the fly stays far behind.** Its best is 2.9 at gain 1.25, and past that its cores
+  latch: the next hot spots are close behind the first (206, 178, 173…), so there's no headroom.
+  The degree-preserving shuffle reaches 22.8 and Erdős–Rényi 30.8, 8–11× more. Noise-free the
+  order is the same (15.5 vs 36.0 and 69.1).
+- **It's the topology.** The three wirings that keep the fly's connections (connectome, weight
+  shuffle, sign shuffle) all end up near 3; the two that scramble who connects to whom reach 23 to
+  31. Moving synapse counts around or changing which neurons are inhibitory doesn't help.
+- Caveats on the controls' side: the degree-preserving shuffle is only valid up to gain 1 (it turns
+  unstable past that), so its best sits right at the edge. Erdős–Rényi's best, at gain 8, has 90% of
+  its readouts barely moving, with the memory carried by the 10% that do, and it turns invalid at
+  12. At the standard gain it already has 7.4, 2.5× the fly's best.
+
+<p align="center">
+  <img src="docs/img/gain_sweep_small.png" width="820" alt="Memory capacity against gain for the connectome and four control wirings in the 3,000-neuron circuit, with and without readout noise">
+</p>
+
+So the honest answer: biological wiring isn't a better reservoir, and at brain scale it's a clearly
+worse one. The fly brain is **a set of dense modules, and a reservoir with one global gain can't
+drive all of them at once.** In a small circuit with a single dominant module, tuning the gain is
+enough to match random wiring; across the whole brain it isn't.
 
 ### What the fly does with the market
 
@@ -149,8 +180,8 @@ same fitting code.
   a cleaner test of "is the wiring special" than noisy market returns. Reported twice: noise-free
   (the standard benchmark) and **with readout noise** (0.1% of a neuron's range added before
   fitting, `memory.readout_noise`). The noise-free readout rescales every neuron and can decode
-  fluctuations of a millionth, which no physical system could carry; on the fly that was more than
-  half of its measured memory. The noisy number counts only memory that is actually usable.
+  fluctuations of a millionth, which no physical system could carry; on the whole-brain fly that
+  is 84% of its measured memory. The noisy number counts only memory that is actually usable.
 - **Readout stability**: run the reservoir twice with inputs that differ only in the distant past.
   *Unstable readouts* end up in different states (they latched or went chaotic); a valid reservoir
   has none. *Active readouts* are the ones that move at all. Both are reported per wiring in every
@@ -183,7 +214,7 @@ python -m venv .venv
 
 Calling the venv's Python directly skips `activate`, which PowerShell often blocks.
 
-The tests run on synthetic data in about 15 seconds. The demo runs the whole pipeline offline on a
+The tests run on synthetic data in about 20 seconds. The demo runs the whole pipeline offline on a
 fake connectome with a planted signal, just to prove everything works.
 
 Notebooks in VS Code: open the `flybrain-reservoir` folder itself and pick the `.venv` kernel. If a
@@ -222,7 +253,8 @@ python scripts/run_experiment.py --config configs/small.yaml --set reservoir.nor
 ### Scaling up
 - Subgraph size is just `subgraph.n_neurons`; everything is sparse, so 3k to 50k is a config change.
 - `configs/full.yaml` runs the whole CNS (`method: all`) with 4 parallel jobs. Meant for a
-  desktop (32 GB RAM is plenty); expect roughly an hour.
+  desktop (32 GB RAM is plenty). With the GPU backend on an RX 7900 XTX the experiment takes about
+  11 minutes and the gain sweep about 4; CPU-only is slower.
 
 ### GPU (AMD on Linux)
 
@@ -288,7 +320,8 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
   cleanest skill measure.
 - The standard error of an annualized Sharpe over ~19 years is about 0.23. Small differences are noise.
 - p-values come from paired tests over seeds. Several comparisons run at once, so expect the odd
-  p < 0.05 by chance; the memory-capacity gaps (p < 0.001) survive that.
+  p < 0.05 by chance; the memory gaps (with readout noise) between the fly and the two scrambled
+  wirings (p < 0.001) survive that. The fly vs weight and sign shuffle differences are small.
 
 ### Limitations
 - Rate model, not spiking. A leaky integrate-and-fire version is the obvious next step.
@@ -297,6 +330,11 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - The hot spots depend on the neurotransmitter labels, which are mostly *predictions* from the
   dataset. The antennal-lobe core is labeled mostly excitatory; if more of it is actually
   inhibitory, it is less explosive than modeled here.
+- One global gain is the model's choice, not the fly's: real neurons have their own thresholds,
+  adaptation and neuromodulation. Per-region gains would be the natural next experiment.
+- The readout noise level (0.1% of a neuron's range) is a judgment call. It changes the small-circuit
+  verdict at best gains (fly's connections slightly ahead noise-free, a tie with noise), not the
+  whole-brain one.
 - Memory capacity with white-noise input is one benchmark. Other tasks (nonlinear transforms,
   chaotic time series) could rank the wirings differently.
 
