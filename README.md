@@ -23,13 +23,14 @@ biological wiring special as a reservoir, compared to random wiring with matchin
 
 SPY daily, out of sample Sep 2007 to Sep 2026. Two scales: a 3,000-neuron circuit grown from the
 sensory neurons (`configs/small.yaml`, 5 seeds) and the whole CNS, 166,700 neurons (`configs/full.yaml`,
-10 seeds). The gain sweeps use 3 seeds. `scripts/report.py` prints every number below from the
-result folders.
+10 seeds). The gain sweeps and the per-region search use 3 seeds. `scripts/report.py` prints every
+number below from the result folders.
 
 **Short version:** the fly brain is no better at markets than random wiring, and as a memory it's
-worse. Its wiring is a set of dense modules, and a reservoir with one global gain can't drive all of
-them at once. In a small circuit, tuning the gain brings it level with the controls; across the
-whole brain it stays 8–11× behind.
+worse. Its wiring is a set of dense knots, one inside almost every brain region, and a reservoir
+can't drive them all at once. With one global gain, tuning brings the fly level with the controls in
+a small circuit but leaves it 8–11× behind across the whole brain. Giving every region its own gain
+helps random wiring far more than the fly.
 
 **Markets: no edge at either scale, and the wiring doesn't matter.** Every reservoir has an IC around
 0.015 (t ≈ 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe
@@ -78,7 +79,8 @@ tiny two-neuron loops then set the gain instead and 95% of the brain stays silen
 
 **Memory with each wiring at its own best gain (`scripts/gain_sweep.py`).** Forcing one gain on
 every wiring is arbitrary, so the sweep tries 13 gains from 0.5 to 20 and keeps each wiring's best
-*valid* one: at most 1% of readouts latch onto the distant past or go chaotic, for every seed.
+*valid* one: at most 1% of readouts latch onto the distant past or go chaotic, in each of four
+latching tests with different inputs, for every seed.
 
 <p align="center">
   <img src="docs/img/gain_sweep_full.png" width="820" alt="Memory capacity against gain for the connectome and four control wirings across the whole CNS, with and without readout noise">
@@ -86,22 +88,23 @@ every wiring is arbitrary, so the sweep tries 13 gains from 0.5 to 20 and keeps 
 
 | best valid memory, readout noise (gain) | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
 |---|---|---|---|---|---|
-| 3,000 neurons | 6.7 (3) | 6.8 (12) | 7.4 (3) | 6.7 (4) | 7.2 (1) |
-| whole CNS | **2.9** (1.25) | 22.8 (1) | 3.4 (1.25) | 3.7 (1.25) | 30.8 (8) |
+| 3,000 neurons | 6.7 (3) | 6.8 (12) | 7.4 (3) | 4.1 (1) | 7.2 (1) |
+| whole CNS | **2.9** (1.25) | 22.8 (1) | 2.9 (1.1) | 3.1 (1) | 30.8 (8) |
 
-- **3,000 neurons: a tie.** Turning the gain up to 3 more than doubles the fly's memory, and every
-  wiring lands between 6.7 and 7.4, within the seed-to-seed spread. In this circuit the next hot
-  spot is much weaker than the antennal lobe (82 vs 251), so the gain can go up about 3× and wake
-  most of the circuit (60% of readouts move) before anything latches. Noise-free, the wirings with
-  the fly's connections even come out ahead (12.8 to 14.7 vs 11.4 to 11.9), but that lead lives in
-  tiny fluctuations and disappears with noise.
+- **3,000 neurons: a tie.** Turning the gain up to 3 more than doubles the fly's memory, and four of
+  the five wirings land between 6.7 and 7.4, within the seed-to-seed spread (the sign shuffle
+  latches at any gain above 1 and stays at 4.1). In this circuit the next hot spot is much weaker
+  than the antennal lobe (82 vs 251), so the gain can go up about 3× and wake most of the circuit
+  (59% of readouts move) before anything latches. Noise-free, the connectome and the weight shuffle
+  even come out ahead (13.9 and 14.7 vs 11.4 to 11.9), but that lead lives in tiny fluctuations and
+  disappears with noise.
 - **Whole brain: the fly stays far behind.** Its best is 2.9 at gain 1.25, and past that its cores
   latch: the next hot spots are close behind the first (206, 178, 173…), so there's no headroom.
   The degree-preserving shuffle reaches 22.8 and Erdős–Rényi 30.8, 8–11× more. Noise-free the
   order is the same (15.5 vs 36.0 and 69.1).
 - **It's the topology.** The three wirings that keep the fly's connections (connectome, weight
-  shuffle, sign shuffle) all end up near 3; the two that scramble who connects to whom reach 23 to
-  31. Moving synapse counts around or changing which neurons are inhibitory doesn't help.
+  shuffle, sign shuffle) all end up near 3 (2.9 to 3.1); the two that scramble who connects to whom
+  reach 23 to 31. Moving synapse counts around or changing which neurons are inhibitory doesn't help.
 - Caveats on the controls' side: the degree-preserving shuffle is only valid up to gain 1 (it turns
   unstable past that), so its best sits right at the edge. Erdős–Rényi's best, at gain 8, has 90% of
   its readouts barely moving, with the memory carried by the 10% that do, and it turns invalid at
@@ -111,10 +114,53 @@ every wiring is arbitrary, so the sweep tries 13 gains from 0.5 to 20 and keeps 
   <img src="docs/img/gain_sweep_small.png" width="820" alt="Memory capacity against gain for the connectome and four control wirings in the 3,000-neuron circuit, with and without readout noise">
 </p>
 
+**Each brain region its own gain (`scripts/region_gains.py`).** A real brain isn't stuck with one
+volume knob: neuromodulators and local inhibition tune each region. So the model gets the same
+freedom. The neurons are split into the anatomical regions from the activity figures (visual system,
+central brain, nerve cord, mushroom body, antennal lobe, …: 9 in the small circuit, 11 in the whole
+CNS), each region's incoming synapses get their own factor, and a search moves one factor at a time
+(×2, then ×1.41) while memory improves and every latching test passes. It starts from the two best
+peaks of each wiring's single-gain curve and picks factors on one set of white-noise inputs; every
+number below comes from fresh inputs it never saw. Every wiring gets the same regions and the same
+search.
+
+<p align="center">
+  <img src="docs/img/region_gains_full.png" width="900" alt="Memory with one gain versus one gain per brain region for the connectome and four control wirings across the whole CNS, and the factor the search chose for each region">
+</p>
+
+| memory with readout noise, fresh inputs | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
+|---|---|---|---|---|---|
+| 3,000 neurons, best single gain | 6.8 | 6.9 | 7.4 | 5.9 | 7.2 |
+| 3,000 neurons, per-region gains | **11.5** | 42.6 | 12.4 | 12.2 | 36.0 |
+| whole CNS, best single gain | 3.4 | 22.9 | 3.3 | 4.7 | 30.9 |
+| whole CNS, per-region gains | **6.2** | 47.5 | 6.0 | 7.2 | 71.2 |
+
+(Single gains here are each seed's own best, measured on the fresh inputs, so they differ a little
+from the sweep table.)
+
+- **The fly gains about 75%, random wiring 2–6×.** In the small circuit the tie turns into a 3–4×
+  gap (11.5 vs 42.6 and 36.0). Across the whole brain the gap stays about where it was, 8–12×
+  (6.2 vs 47.5 and 71.2).
+- **Same split as before.** The three wirings with the fly's connections end up together (around 12
+  in the small circuit, 6 to 7 in the whole brain), the two scrambled ones far above.
+- **Why it doesn't rescue the fly: the knots sit inside the regions.** Every fly region is at least
+  4 times louder on its own than the same region in the degree-preserving shuffle (largest eigenvalue
+  of the region's own connections: antennal lobe 252 vs 7.5, visual system 206 vs 33, rest of the
+  central brain 171 vs 15, central complex 116 vs 4). A region's factor scales its knot together
+  with everything around it, so after the search the fly's dominant mode still sits on ~60 neurons,
+  against ~10,000 in the degree-preserving shuffle and ~14,000 in Erdős–Rényi.
+- Erdős–Rényi's per-region result comes from starting at gain 1, not from its saturated best single
+  gain of 8, and wakes up the whole brain (98% of readouts move, from 10%). Every per-region setting
+  passes all latching tests on the fresh inputs, except one sign-shuffle seed in the small circuit.
+
+<p align="center">
+  <img src="docs/img/region_gains_small.png" width="900" alt="Memory with one gain versus one gain per brain region in the 3,000-neuron circuit, and the factor the search chose for each region">
+</p>
+
 So the honest answer: biological wiring isn't a better reservoir, and at brain scale it's a clearly
-worse one. The fly brain is **a set of dense modules, and a reservoir with one global gain can't
-drive all of them at once.** In a small circuit with a single dominant module, tuning the gain is
-enough to match random wiring; across the whole brain it isn't.
+worse one. The fly brain is **a set of dense knots, one inside almost every region, and a reservoir
+can't drive them all at once**, whether it gets one global gain or one per region. The only place
+the fly keeps up is a small circuit with one global gain, and per-region gains take that away too.
 
 ### What the fly does with the market
 
@@ -258,7 +304,7 @@ python scripts/run_experiment.py --config configs/small.yaml --set reservoir.nor
 - Subgraph size is just `subgraph.n_neurons`; everything is sparse, so 3k to 50k is a config change.
 - `configs/full.yaml` runs the whole CNS (`method: all`) with 4 parallel jobs. Meant for a
   desktop (32 GB RAM is plenty). With the GPU backend on an RX 7900 XTX the experiment takes about
-  11 minutes and the gain sweep about 4; CPU-only is slower.
+  12 minutes, the gain sweep about 6 and the per-region search about 35; CPU-only is slower.
 
 ### GPU (AMD on Linux)
 
@@ -305,13 +351,14 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
    persistent regressors overfit noisy targets).
 3. **Leak rate 1.0.** No per-neuron smoothing, so all memory has to come from the wiring, which is
    the thing being tested. Leaky neurons add memory that has nothing to do with W.
-4. **Equal spectral radius for every wiring, plus a gain sweep.** The main experiment uses the
+4. **Equal spectral radius for every wiring, plus a gain sweep and per-region gains.** The main experiment uses the
    standard echo-state recipe: every wiring rescaled to spectral radius 0.9. That's fair for
    random graphs, but the fly's largest eigenvalue sits on a small hot spot, so it gets turned down
    much harder than the controls. `gain_sweep.py` removes that bias by comparing each wiring at its
    own best valid gain. Two alternatives were tried and rejected: matching total synaptic strength
    (`normalize: frobenius`) pushes the fly's cores past 1 so they latch, and per-neuron input
-   normalization hands the gain to tiny two-neuron loops.
+   normalization hands the gain to tiny two-neuron loops. `region_gains.py` then gives every brain
+   region its own gain on top.
 5. **Edges need ≥ 5 synapses.** Standard threshold to drop noisy connections (`connectome.min_weight`).
 6. **Inputs = the most-connected sensory neurons**, and the subgraph is grown from them by
    repeatedly adding the neurons most strongly connected to it, so the signal can actually
@@ -334,8 +381,10 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - The hot spots depend on the neurotransmitter labels, which are mostly *predictions* from the
   dataset. The antennal-lobe core is labeled mostly excitatory; if more of it is actually
   inhibitory, it is less explosive than modeled here.
-- One global gain is the model's choice, not the fly's: real neurons have their own thresholds,
-  adaptation and neuromodulation. Per-region gains would be the natural next experiment.
+- Gains are global or per brain region, and one gain per region is still coarse: real neurons tune
+  their own excitability (neuromodulation, homeostatic plasticity), and the fly's knots sit inside
+  regions. Per-cell-type or per-neuron gains could still change the picture. The region search is a
+  local coordinate search over 3 seeds, not a global optimum.
 - The readout noise level (0.1% of a neuron's range) is a judgment call. It changes the small-circuit
   verdict at best gains (fly's connections slightly ahead noise-free, a tie with noise), not the
   whole-brain one.

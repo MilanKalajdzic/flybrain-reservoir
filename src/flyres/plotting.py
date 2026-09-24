@@ -467,7 +467,7 @@ def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: 
     ax_h.set_title("Factor on each region's incoming synapses (neurons)", loc="left", fontsize=9.5, color=INK_2,
                    pad=18)
     fig.suptitle("Per-region gains", x=0.125, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.06)
-    fig.text(0.125, 0.995, "Each wiring starts at its best single gain; the search then turns each region up "
+    fig.text(0.125, 0.995, "Hollow = each wiring's best single gain. Filled = after the search turns each region up "
              "(red) or down (blue). Mean over seeds, small dots = seeds.", ha="left", fontsize=8.5, color=INK_2)
     return _save(fig, path)
 

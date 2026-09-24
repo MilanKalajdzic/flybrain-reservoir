@@ -105,6 +105,10 @@ def test_region_gains_script_and_report(tmp_path):
     out = tmp_path / "t" / "region_gains"
     for f in ("summary.md", "results.csv", "regions.csv", "evaluations.csv", "region_gains.png", "config_used.yaml"):
         assert (out / f).exists(), f
+    (out / "region_gains.png").unlink()
+    replot = subprocess.run(cmd + ["--replot"], capture_output=True, text=True, timeout=120)
+    assert replot.returncode == 0, replot.stderr[-2000:]
+    assert (out / "region_gains.png").exists()
     rep = subprocess.run([sys.executable, str(REPO / "scripts" / "report.py"), str(tmp_path / "t")],
                          capture_output=True, text=True, timeout=120)
     assert rep.returncode == 0, rep.stderr[-2000:]
