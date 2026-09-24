@@ -4,7 +4,8 @@
     python scripts/report.py results/small results/rho05
 
 For each run folder: market metrics per model, memory per wiring (noise-free and with readout noise),
-the dynamics diagnostics, and, if gain_sweep.py was run for it, each wiring's best valid gain.
+the dynamics diagnostics, and, if gain_sweep.py / region_gains.py were run for it, each wiring's best
+valid gain and what per-region gains add.
 """
 import argparse
 from pathlib import Path
@@ -72,6 +73,19 @@ def run_report(folder: Path) -> list[str]:
                 parts = [f"{r['gain']:g}: {r['memory_noisy']:.1f} / {r['memory']:.1f}"
                          for _, r in at[at["wiring"] == w].sort_values("gain").iterrows()]
                 lines.append(f"- {w}: " + ", ".join(parts))
+        lines.append("")
+    regions = folder / "region_gains" / "results.csv"
+    if regions.exists():
+        r = pd.read_csv(regions)
+        col = "memory_noisy" if "memory_noisy_single" in r.columns else "memory"
+        lines += ["Per-region gains, memory " + ("with readout noise " if col == "memory_noisy" else "")
+                  + "on a fresh input", "",
+                  "| wiring | best single gain | per-region gains | change | active readouts |", "|---|---|---|---|---|"]
+        for w in order(r["wiring"].unique()):
+            s = r[r["wiring"] == w]
+            d = (s[f"{col}_regions"] - s[f"{col}_single"]).mean()
+            lines.append(f"| {w} | {pm(s[f'{col}_single'])} | {pm(s[f'{col}_regions'])} | {d:+.1f} | "
+                         f"{s['active_readouts_single'].mean():.0%} → {s['active_readouts_regions'].mean():.0%} |")
         lines.append("")
     if len(lines) == 2:
         lines += ["(no results found)", ""]

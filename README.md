@@ -233,13 +233,15 @@ python scripts/run_experiment.py --config configs/small.yaml
 python scripts/brain_activity.py --config configs/small.yaml
 python scripts/gain_sweep.py --config configs/small.yaml     # each wiring at its own best gain
 python scripts/hot_spots.py --config configs/small.yaml      # where the dominant eigenvalue lives
+python scripts/region_gains.py --config configs/small.yaml   # each brain region its own gain
 python scripts/report.py                                      # headline numbers from all finished runs
 ```
 
 Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/` have the rest.
 `brain_activity.py` writes the heatmap and the animation to `results/small/brain/` (pick another
 crash with `--window 2020-01-01 2020-08-31 --name COVID`). `gain_sweep.py` writes
-`results/small/gain_sweep/` (summary, CSVs, figure); widen the grid with `--gains 0.5 1 2 3 6 12 20`. `notebooks/01_connectome_tour.ipynb`
+`results/small/gain_sweep/` (summary, CSVs, figure); widen the grid with `--gains 0.5 1 2 3 6 12 20`.
+`region_gains.py` writes `results/small/region_gains/`; add `--set n_jobs=4` to use more cores. `notebooks/01_connectome_tour.ipynb`
 explores the graph and its eigenvalue spectrum, `notebooks/02_results.ipynb` runs and plots an
 experiment.
 
@@ -352,12 +354,13 @@ src/flyres/
   benchmarks.py   memory capacity, readout stability (active / unstable readouts)
   diagnostics.py  where the dominant eigenvalue lives, hot-spot cascade
   sweep.py        gain sweep: each wiring at its own best valid gain
+  regions.py      per-region gains: anatomical regions, coordinate search for each region's factor
   activity.py     neuron groups, activity relative to normal, soma positions
   experiment.py   runs everything and writes results
   plotting.py     figures and the brain animation
   synthetic.py    fake data for tests and the offline demo
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
-                  gain_sweep.py, hot_spots.py, report.py
+                  gain_sweep.py, hot_spots.py, region_gains.py, report.py
 configs/          small.yaml (laptop), full.yaml (whole CNS), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
 docs/img/         figures used in this README

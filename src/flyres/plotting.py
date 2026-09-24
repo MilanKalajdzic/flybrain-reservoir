@@ -376,6 +376,102 @@ def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", 
     return _save(fig, path)
 
 
+# diverging: turned down (blue) <- unchanged (gray) -> turned up (red), equal steps per arm
+DIVERGING = ["#184f95", "#5598e7", "#b7d3f6", "#f0efec", "#f5b9b8", "#e66767", "#a82e2d"]
+
+
+def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: float | None = None, path=None):
+    """Left: memory on a fresh input at each wiring's best single gain (hollow) and with per-region gains
+    (filled), small dots = seeds. Right: the factor the search gave each region, per wiring (geometric
+    mean over seeds, log color scale, red = turned up)."""
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+
+    noisy = "memory_noisy_single" in results.columns
+    col = "memory_noisy" if noisy else "memory"
+    wirings = [w for w in WIRINGS if w in set(results["wiring"])]
+    regions = list(dict.fromkeys(region_table["region"]))
+    sizes = region_table.drop_duplicates("region").set_index("region")["neurons"]
+
+    fig = plt.figure(figsize=(12.5, 0.5 * len(wirings) + 2.6), facecolor=SURFACE)
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.55, 0.03], wspace=0.08)
+    ax, ax_h, ax_c = fig.add_subplot(gs[0]), fig.add_subplot(gs[1]), fig.add_subplot(gs[2])
+    for a in (ax, ax_h):
+        a.set_facecolor(SURFACE)
+        for side in ("top", "right"):
+            a.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            a.spines[side].set_color(AXIS)
+            a.spines[side].set_linewidth(0.8)
+        a.tick_params(colors=MUTED, labelcolor=INK_2, labelsize=8.5)
+
+    ax.grid(True, axis="x", color=GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+    xmax = 1.15 * float(np.nanmax(results[[f"{col}_single", f"{col}_regions"]].to_numpy()))
+    ax.set_xlim(0, xmax)
+    for i, w in enumerate(wirings):
+        r = results[results["wiring"] == w]
+        a, b = r[f"{col}_single"], r[f"{col}_regions"]
+        color = WIRING_COLORS[w]
+        ax.plot([a.mean(), b.mean()], [i, i], color=color, linewidth=2.0, zorder=2, **LINE)
+        ax.scatter(a, np.full(len(a), i + 0.2), s=10, color=color, alpha=0.45, linewidths=0, zorder=2)
+        ax.scatter(b, np.full(len(b), i + 0.2), s=10, color=color, alpha=0.45, linewidths=0, zorder=2)
+        ax.scatter([a.mean()], [i], s=70, facecolors=SURFACE, edgecolors=color, linewidths=2.0, zorder=3)
+        ax.scatter([b.mean()], [i], s=80, color=color, edgecolors=SURFACE, linewidths=2.0, zorder=4)
+        ax.text(max(a.mean(), b.mean()) + 0.03 * xmax, i, f"{b.mean():.1f}", ha="left", va="center",
+                fontsize=8.5, color=INK_2)
+    ax.set_yticks(range(len(wirings)), [LABELS[w] for w in wirings])
+    ax.set_ylim(len(wirings) - 0.5, -0.5)  # same row centres as the heatmap
+    ax.tick_params(axis="y", length=0)
+    ax.set_xlabel("memory capacity" + (f", readout noise {noise:.1%} of range" if noisy and noise else ""),
+                  color=INK_2, fontsize=9)
+    handles = [plt.Line2D([], [], marker="o", linestyle="", markersize=7, markerfacecolor=SURFACE,
+                          markeredgecolor=INK_2, markeredgewidth=1.6, label="best single gain"),
+               plt.Line2D([], [], marker="o", linestyle="", markersize=7, color=INK_2, label="per-region gains")]
+    ax.legend(handles=handles, frameon=False, fontsize=8.5, labelcolor=INK_2, loc="lower right",
+              bbox_to_anchor=(1.0, 1.0), ncol=2, borderaxespad=0.2, handletextpad=0.3, columnspacing=1.0)
+
+    t = region_table.assign(log2=np.log2(region_table["factor"]))
+    lf = t.pivot_table(index="wiring", columns="region", values="log2", aggfunc="mean").reindex(
+        index=wirings, columns=regions)
+    lim = max(1.0, float(np.nanmax(np.abs(lf.to_numpy()))))
+    cmap = LinearSegmentedColormap.from_list("diverging", DIVERGING)
+    mesh = ax_h.pcolormesh(np.arange(len(regions) + 1), np.arange(len(wirings) + 1), lf.to_numpy(), cmap=cmap,
+                           norm=TwoSlopeNorm(0.0, -lim, lim), shading="flat")
+    ax_h.hlines(np.arange(1, len(wirings)), 0, len(regions), color=SURFACE, linewidth=2)
+    ax_h.vlines(np.arange(1, len(regions)), 0, len(wirings), color=SURFACE, linewidth=2)
+    for i in range(len(wirings)):
+        for j in range(len(regions)):
+            v = lf.iat[i, j]
+            if np.isfinite(v):
+                f = 2.0 ** v
+                ax_h.text(j + 0.5, i + 0.5, f"×{f:.2g}" if abs(v) > 0.05 else "–", ha="center", va="center",
+                          fontsize=7.5, color=SURFACE if abs(v) > 0.72 * lim else INK_2)
+
+    def short(n):
+        return f"{n / 1000:.0f}k" if n >= 10_000 else (f"{n / 1000:.1f}k" if n >= 1000 else f"{n}")
+
+    ax_h.set_xticks(np.arange(len(regions)) + 0.5, [f"{r} ({short(int(sizes[r]))})" for r in regions],
+                    rotation=35, ha="right", rotation_mode="anchor")
+    ax_h.set_yticks(np.arange(len(wirings)) + 0.5, [])
+    ax_h.set_ylim(len(wirings), 0)
+    ax_h.tick_params(length=0)
+    for side in ("left", "bottom"):
+        ax_h.spines[side].set_visible(False)
+    cb = fig.colorbar(mesh, cax=ax_c)
+    cb.outline.set_visible(False)
+    ticks = [v for v in range(-6, 7, 2 if lim > 2 else 1) if -lim <= v <= lim]
+    cb.set_ticks(ticks, labels=[f"×{2 ** v}" if v >= 0 else f"×1/{2 ** -v}" for v in ticks])
+    cb.ax.tick_params(colors=MUTED, labelcolor=INK_2, labelsize=8)
+
+    ax.set_title("Memory on a fresh input", loc="left", fontsize=9.5, color=INK_2, pad=18)
+    ax_h.set_title("Factor on each region's incoming synapses (neurons)", loc="left", fontsize=9.5, color=INK_2,
+                   pad=18)
+    fig.suptitle("Per-region gains", x=0.125, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.06)
+    fig.text(0.125, 0.995, "Each wiring starts at its best single gain; the search then turns each region up "
+             "(red) or down (blue). Mean over seeds, small dots = seeds.", ha="left", fontsize=8.5, color=INK_2)
+    return _save(fig, path)
+
+
 def plot_degree_ccdf(neurons: pd.DataFrame, path=None):
     """Complementary CDF of in- and out-degree on log-log axes: heavy tails show up as long straight-ish tails."""
     fig, ax = _figure(figsize=(5.6, 3.6))
