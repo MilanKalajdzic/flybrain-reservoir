@@ -487,3 +487,104 @@ def plot_degree_ccdf(neurons: pd.DataFrame, path=None):
     _legend(ax, loc="lower left")
     fig.tight_layout()
     return _save(fig, path)
+
+
+VOL_BASELINE_LABELS = {"ewma": "EWMA", "har_levels": "HAR (levels)", "har": "HAR",
+                       "har_inputs": "HAR + inputs (linear)"}
+
+
+def plot_vol_models(metrics: pd.DataFrame, ticker: str, path=None):
+    """Log MSE relative to HAR (%), one panel per horizon. Small dots = seeds, big dot = mean.
+    Left of the line = better than HAR."""
+    df = metrics[metrics["ticker"] == ticker]
+    horizons = sorted(df["horizon"].unique())
+    models = [w for w in WIRINGS if w in set(df["model"])]
+    baselines = [b for b in ("har_inputs", "har", "ewma") if b in set(df["model"])]  # har_levels: fitted for QLIKE
+    order = models + baselines
+    y = {m: i for i, m in enumerate(order)}
+    fig, axes = _figure(len(horizons), figsize=(3.9 * len(horizons) + 1.2, 0.4 * len(order) + 1.6), sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, h in zip(axes, horizons):
+        g = df[df["horizon"] == h]
+        har = g.loc[g["model"] == "har", "mse_log"].mean()
+        ax.grid(axis="y", visible=False)
+        ax.axvline(0.0, color=AXIS, linewidth=0.8, zorder=0)
+        for model in order:
+            vals = 100.0 * (g.loc[g["model"] == model, "mse_log"].to_numpy() / har - 1.0)
+            if len(vals) == 0:
+                continue
+            color = WIRING_COLORS.get(model, INK_2)
+            ax.scatter(vals, np.full(len(vals), y[model]), s=14, color=color, alpha=0.5, linewidths=0, zorder=2)
+            ax.scatter([vals.mean()], [y[model]], s=64, color=color, edgecolors=SURFACE, linewidths=2, zorder=3)
+        ax.axhline(len(models) - 0.5, color=GRID, linewidth=0.8)
+        ax.set_xlabel("log MSE vs HAR (%)")
+        ax.set_title(f"next {h} days", loc="left", fontsize=9.5, color=INK_2)
+    axes[0].set_yticks(range(len(order)), [LABELS.get(m, VOL_BASELINE_LABELS.get(m, m)) for m in order])
+    axes[0].invert_yaxis()
+    fig.suptitle(f"{ticker}: forecasting realized volatility", x=0.01, ha="left", fontsize=11, fontweight="bold",
+                 color=INK, y=1.07)
+    fig.text(0.01, 1.0, "Out-of-sample error on log realized variance, relative to HAR (left = better). "
+             "Small dots = seeds.", ha="left", fontsize=8.5, color=INK_2)
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+def plot_vol_memory(link: pd.DataFrame, ticker: str, path=None):
+    """Each reservoir's memory capacity against what its states add to HAR + inputs (log MSE, %)."""
+    df = link[link["ticker"] == ticker]
+    horizons = sorted(df["horizon"].unique())
+    fig, axes = _figure(len(horizons), figsize=(3.9 * len(horizons) + 1.6, 3.4), sharey=False)
+    axes = np.atleast_1d(axes)
+    for ax, h in zip(axes, horizons):
+        g = df[df["horizon"] == h]
+        ax.axhline(0.0, color=AXIS, linewidth=0.8, zorder=0)
+        for w in [w for w in WIRINGS if w in set(g["model"])]:
+            s = g[g["model"] == w]
+            ax.scatter(s["memory"], s["mse_vs_har_inputs_pct"], s=40, color=WIRING_COLORS[w], edgecolors=SURFACE,
+                       linewidths=1.5, zorder=3, label=LABELS[w])
+        ax.set_xlabel(f"memory capacity ({g['memory_measure'].iloc[0]})" if "memory_measure" in g else
+                      "memory capacity")
+        ax.set_title(f"next {h} days", loc="left", fontsize=9.5, color=INK_2)
+    axes[0].set_ylabel("log MSE vs HAR + inputs (%)")
+    _legend(axes[-1], loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    fig.suptitle(f"{ticker}: does memory help forecast volatility?", x=0.01, ha="left", fontsize=11,
+                 fontweight="bold", color=INK, y=1.1)
+    fig.text(0.01, 1.01, "One dot per reservoir (wiring x seed). Below the line = the states improve on the "
+             "linear model with the same inputs.", ha="left", fontsize=8.5, color=INK_2)
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+def plot_vol_forecast(predictions: pd.DataFrame, ticker: str, horizon: int, windows: dict,
+                      models=("har", "connectome", "degree_preserving"), path=None):
+    """Realized volatility over the next `horizon` days against the forecasts made the day before it starts,
+    annualized, for a few crisis windows. Reservoir lines are seed ensembles (mean variance forecast)."""
+    df = predictions[(predictions["ticker"] == ticker) & (predictions["horizon"] == horizon)]
+    fig, axes = _figure(len(windows), figsize=(5.0 * len(windows) + 1.6, 3.4), sharey=False)
+    axes = np.atleast_1d(axes)
+    colors = {"har": INK_2, **WIRING_COLORS}
+    for ax, (name, (a, b)) in zip(axes, windows.items()):
+        w = df[(df["date"] >= pd.Timestamp(a)) & (df["date"] <= pd.Timestamp(b))]
+        if w.empty:
+            ax.set_visible(False)
+            continue
+        real = w.groupby("date")["realized_var"].first()
+        ax.plot(real.index, 100 * np.sqrt(252 * real), color=MUTED, linewidth=1.2, label="realized", **LINE)
+        for m in models:
+            s = w[w["model"] == m].groupby("date")["var_pred"].mean()
+            if len(s):
+                ax.plot(s.index, 100 * np.sqrt(252 * s), color=colors.get(m, INK_2),
+                        linewidth=2.2 if m == "connectome" else 1.6, linestyle="--" if m == "har" else "-",
+                        label=LABELS.get(m, VOL_BASELINE_LABELS.get(m, m)), **LINE)
+        ax.set_ylim(bottom=0)
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+        ax.set_title(name, loc="left", fontsize=9.5, color=INK_2)
+    axes[0].set_ylabel(f"volatility, next {horizon} days (annualized %)")
+    _legend(axes[-1], loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    fig.suptitle(f"{ticker}: realized volatility and the forecasts made for it", x=0.01, ha="left", fontsize=11,
+                 fontweight="bold", color=INK, y=1.1)
+    fig.text(0.01, 1.01, "Each forecast is plotted at the day it was made. Reservoirs: mean over seeds.",
+             ha="left", fontsize=8.5, color=INK_2)
+    fig.tight_layout()
+    return _save(fig, path)

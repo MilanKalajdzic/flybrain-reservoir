@@ -89,6 +89,27 @@ def run_report(folder: Path) -> list[str]:
                          f"{s['active_readouts_single'].mean():.0%} → {s['active_readouts_regions'].mean():.0%} | "
                          f"{int(s['valid_single'].sum())}/{len(s)} → {int(s['valid_regions'].sum())}/{len(s)} |")
         lines.append("")
+    for sub, label in (("volatility", "standard gain"), ("volatility_best_gain", "each wiring at its best valid gain")):
+        vm = folder / sub / "metrics.csv"
+        if not vm.exists():
+            continue
+        v = pd.read_csv(vm)
+        horizons = sorted(v["horizon"].unique())
+        har = v[v["model"] == "har"].set_index(["ticker", "horizon"])["mse_log"]
+        for ticker in v["ticker"].unique():
+            lines += [f"Volatility forecasts, {ticker}, {label}: log MSE vs HAR (R² log)", "",
+                      "| model | " + " | ".join(f"next {h} days" for h in horizons) + " |",
+                      "|---|" + "---|" * len(horizons)]
+            names = order(v["model"].unique())
+            for model in [n for n in names if n in WIRINGS] + [n for n in ("har_inputs", "har", "har_levels", "ewma")
+                                                              if n in names]:
+                cells = []
+                for h in horizons:
+                    s = v[(v["model"] == model) & (v["ticker"] == ticker) & (v["horizon"] == h)]
+                    cells.append(f"{100 * (s['mse_log'].mean() / har[(ticker, h)] - 1):+.1f}% "
+                                 f"({s['r2_log'].mean():.3f})")
+                lines.append(f"| {model} | " + " | ".join(cells) + " |")
+            lines.append("")
     if len(lines) == 2:
         lines += ["(no results found)", ""]
     return lines

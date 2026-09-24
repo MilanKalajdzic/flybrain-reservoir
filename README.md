@@ -282,6 +282,7 @@ python scripts/brain_activity.py --config configs/small.yaml
 python scripts/gain_sweep.py --config configs/small.yaml     # each wiring at its own best gain
 python scripts/hot_spots.py --config configs/small.yaml      # where the dominant eigenvalue lives
 python scripts/region_gains.py --config configs/small.yaml   # each brain region its own gain
+python scripts/vol_forecast.py --config configs/small.yaml   # volatility forecasts, same reservoirs
 python scripts/report.py                                      # headline numbers from all finished runs
 ```
 
@@ -289,7 +290,10 @@ Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/`
 `brain_activity.py` writes the heatmap and the animation to `results/small/brain/` (pick another
 crash with `--window 2020-01-01 2020-08-31 --name COVID`). `gain_sweep.py` writes
 `results/small/gain_sweep/` (summary, CSVs, figure); widen the grid with `--gains 0.5 1 2 3 6 12 20`.
-`region_gains.py` writes `results/small/region_gains/`; add `--set n_jobs=4` to use more cores. `notebooks/01_connectome_tour.ipynb`
+`region_gains.py` writes `results/small/region_gains/`; add `--set n_jobs=4` to use more cores.
+`vol_forecast.py` writes `results/small/volatility/` (run it after `run_experiment.py` so it can relate
+each reservoir's memory to its forecasts); `--best-gains` runs every wiring at its best gain from
+the gain sweep instead. `notebooks/01_connectome_tour.ipynb`
 explores the graph and its eigenvalue spectrum, `notebooks/02_results.ipynb` runs and plots an
 experiment.
 
@@ -406,12 +410,13 @@ src/flyres/
   diagnostics.py  where the dominant eigenvalue lives, hot-spot cascade
   sweep.py        gain sweep: each wiring at its own best valid gain
   regions.py      per-region gains: anatomical regions, coordinate search for each region's factor
+  volatility.py   realized-volatility forecasts: HAR benchmarks, reservoir readouts, DM tests
   activity.py     neuron groups, activity relative to normal, soma positions
   experiment.py   runs everything and writes results
   plotting.py     figures and the brain animation
   synthetic.py    fake data for tests and the offline demo
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
-                  gain_sweep.py, hot_spots.py, region_gains.py, report.py
+                  gain_sweep.py, hot_spots.py, region_gains.py, vol_forecast.py, report.py
 configs/          small.yaml (laptop), full.yaml (whole CNS), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
 docs/img/         figures used in this README

@@ -93,6 +93,12 @@ class MemoryConfig:
 
 
 @dataclass
+class VolatilityConfig:
+    horizons: list = field(default_factory=lambda: [5, 22])  # forecast realized variance over the next h days
+    ewma_lambda: float = 0.94        # RiskMetrics decay for the EWMA baseline
+
+
+@dataclass
 class ExperimentConfig:
     name: str = "small"
     seeds: list = field(default_factory=lambda: [0, 1, 2, 3, 4])
@@ -108,13 +114,15 @@ class ExperimentConfig:
     market: MarketConfig = field(default_factory=MarketConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
 _SECTIONS = {"data": DataConfig, "connectome": ConnectomeConfig, "subgraph": SubgraphConfig,
-             "reservoir": ReservoirConfig, "market": MarketConfig, "eval": EvalConfig, "memory": MemoryConfig}
+             "reservoir": ReservoirConfig, "market": MarketConfig, "eval": EvalConfig, "memory": MemoryConfig,
+             "volatility": VolatilityConfig}
 
 
 def _build(cls, values: dict):
