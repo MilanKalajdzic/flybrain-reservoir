@@ -30,7 +30,9 @@ number below from the result folders.
 worse. Its wiring is a set of dense knots, one inside almost every brain region, and a reservoir
 can't drive them all at once. With one global gain, tuning brings the fly level with the controls in
 a small circuit but leaves it 8–11× behind across the whole brain. Giving every region its own gain
-helps random wiring far more than the fly.
+helps random wiring far more than the fly. On volatility, where there is something to forecast, every
+reservoir beats the standard HAR benchmark by about 17% at a 5-day horizon, but a linear model with
+the same inputs already gets 15% of that, and the wiring moves the result by about 1%.
 
 **Markets: no edge at either scale, and the wiring doesn't matter.** Every reservoir has an IC around
 0.015 (t ≈ 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe
@@ -161,6 +163,61 @@ So the honest answer: biological wiring isn't a better reservoir, and at brain s
 worse one. The fly brain is **a set of dense knots, one inside almost every region, and a reservoir
 can't drive them all at once**, whether it gets one global gain or one per region. The only place
 the fly keeps up is a small circuit with one global gain, and per-region gains take that away too.
+
+### Volatility: a question with an answer
+
+Returns are close to unpredictable; volatility isn't. `scripts/vol_forecast.py` puts a second readout
+on the same reservoirs (same wiring, inputs and seeds as above) and forecasts the log realized
+variance over the next 5 and 22 trading days, walk-forward on the same test days. The benchmark is
+HAR (Corsi 2009), the standard model for this. Each reservoir's readout also sees the HAR features
+and its own 5 inputs directly, so it contains the linear model *HAR + inputs* as a special case:
+reservoir minus HAR + inputs is what the wiring adds.
+
+<p align="center">
+  <img src="docs/img/vol_models_full.png" width="820" alt="Out-of-sample error of each model's volatility forecasts relative to HAR, whole CNS, 5- and 22-day horizons">
+</p>
+
+| whole CNS: log MSE vs HAR (R², log) | next 5 days | next 22 days |
+|---|---|---|
+| connectome | −16.7% (0.533) | −5.0% (0.442) |
+| degree-preserving | −17.4% (0.537) | −6.3% (0.449) |
+| weight shuffle | −17.0% (0.535) | −5.2% (0.443) |
+| sign shuffle | −16.7% (0.533) | −5.2% (0.443) |
+| Erdős–Rényi | −16.9% (0.534) | −5.3% (0.443) |
+| HAR + inputs (linear) | −15.1% (0.524) | **−7.1% (0.454)** |
+| HAR | 0% (0.439) | 0% (0.412) |
+| EWMA | +1.3% (0.432) | −3.7% (0.434) |
+
+- **Volatility is forecastable, and the biggest gain is linear.** HAR explains 44% of the variation
+  in next week's log variance. Adding the reservoir's five inputs (recent returns and the vol-spike
+  ratio) in a plain linear model cuts the error by another 15%, the largest improvement anywhere in
+  this project, and no reservoir is involved.
+- **The reservoir adds a little, at short horizons only.** Every wiring improves on HAR + inputs by
+  2–3% at 5 days (Diebold–Mariano p ≤ 0.013 for all five) and not at all at 22 days, where the
+  linear model is best.
+- **The wiring barely matters.** The wirings are within 1.5% of each other, against 17% over HAR.
+  At the standard gain the fly is 0.6% behind the degree-preserving shuffle at 5 days (consistent
+  across seeds, p ≈ 0.01, but tiny); with every wiring at its best gain it lands between the
+  controls.
+- **Memory helps only a little.** At the standard gain, reservoirs with more memory forecast slightly
+  better at 5 days (Spearman ρ = −0.32 over 50 reservoirs, p = 0.02). With every wiring at its best
+  gain, where memory ranges from 3 to 31, there's no relationship (15 reservoirs). The HAR features
+  already carry a month of history, which leaves little for the reservoir's own memory to add.
+- The 3,000-neuron circuit tells the same story (reservoirs −15.5% to −16.5% vs HAR at 5 days,
+  HAR + inputs −14.4%), with no memory link. One failure worth knowing: the degree-preserving
+  shuffle at gain 12 is saturated (10% of neurons move) and forecast 0.6% annualized volatility on
+  23 October 2008, one bad day that dominates that seed's QLIKE.
+
+Why log MSE and not QLIKE, the usual volatility loss: every log model here (HAR, HAR + inputs, the
+reservoirs) is fitted for log MSE, so it compares them like for like. Log models target the mean of
+log variance, not of variance, which can cost them on QLIKE: on simulated GARCH data, HAR fitted on
+variance beats HAR fitted on logs by 10–20% QLIKE and ties the reservoirs (on SPY the two HARs tie).
+The summaries report QLIKE too, with that HAR-on-variance as its reference. Before trusting any of this, the forecasts were
+checked for lookahead: changing all prices after a date leaves every earlier forecast identical.
+
+<p align="center">
+  <img src="docs/img/vol_forecast_full.png" width="900" alt="Realized 5-day volatility and the forecasts made for it by HAR, the connectome and the degree-preserving shuffle, around the 2008 crash and COVID">
+</p>
 
 ### What the fly does with the market
 
@@ -392,6 +449,9 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - The readout noise level (0.1% of a neuron's range) is a judgment call. It changes the small-circuit
   verdict at best gains (fly's connections slightly ahead noise-free, a tie with noise), not the
   whole-brain one.
+- Realized variance comes from daily squared returns, the only thing daily closes allow. That proxy
+  is noisy; with intraday (5-minute) data every volatility model would be more precise and HAR harder
+  to beat.
 - Memory capacity with white-noise input is one benchmark. Other tasks (nonlinear transforms,
   chaotic time series) could rank the wirings differently.
 
