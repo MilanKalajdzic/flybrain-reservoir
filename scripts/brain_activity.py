@@ -7,7 +7,7 @@ animated brains for crash windows (2008 and COVID by default).
     python scripts/brain_activity.py --config configs/small.yaml --window 2022-01-01 2022-10-31 --name 2022
 
 Uses the experiment's own reservoir (same wiring seed, input weights, bias). Only neurons that move by at
-least 0.1% of their range glow; the rest stay dark, since z-scoring would blow fluctuations of a millionth
+least 0.1% of their maximum glow; the rest stay dark, since z-scoring would blow fluctuations of a millionth
 up to full size. The whole CNS is simulated once per block of neurons (--chunk), so memory stays small.
 The animation needs the raw annotation file (for soma positions); run download_data.py first.
 --compare adds a second wiring and animates the two brains side by side (brain_<window>_vs_<other>.gif).
@@ -46,7 +46,7 @@ WIRING_TEXT = {  # (title start, how the neurons are wired, short name, how, for
     "erdos_renyi": ("The same neurons, wired completely at random,", "wired completely at random",
                     "Wired completely at random", "same number of connections, nothing else kept"),
 }
-DRAWN = "Only neurons that move by more than 0.1% of their range are drawn"
+DRAWN = "Only neurons whose activity varies by more than 0.1% of its maximum are drawn"
 
 
 def save_activity(path: Path, dev, glow: dict, moving, windows: dict) -> None:
@@ -127,7 +127,7 @@ def main():
             runs[wiring] = (dev, glow, moving, windows)
         dev, glow, moving, _ = runs[wiring]
         print(f"{wiring}: {moving.sum():,} of {sub.n:,} neurons ({moving.mean():.0%}) move by at least 0.1% "
-              "of their range")
+              "of their maximum")
         dev.to_csv(out / f"group_deviation_monthly{suffix(wiring)}.csv")
         heat = out / f"activity_heatmap{suffix(wiring)}.png"
         title = ("How stirred up each part of the fly circuit is" if wiring == "connectome"

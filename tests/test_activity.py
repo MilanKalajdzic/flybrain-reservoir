@@ -43,7 +43,7 @@ def test_zscore_leaves_constant_neurons_at_zero():
 
 
 def test_zscore_ignores_neurons_that_barely_move():
-    """Fluctuations below 0.1% of the range carry nothing a noisy readout could use; they stay dark."""
+    """Fluctuations below 0.1% of the maximum carry nothing a noisy readout could use; they stay dark."""
     rng = np.random.default_rng(0)
     states = np.column_stack([rng.standard_normal(500) * 1e-5, rng.standard_normal(500) * 0.01]).astype(np.float32)
     z = activity.zscore(states)

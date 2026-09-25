@@ -79,7 +79,7 @@ def neuron_groups(neurons: pd.DataFrame, input_idx, min_size: int = 8) -> pd.Ser
     return groups.replace(fold)
 
 
-# A neuron counts as moving if its activity varies by at least this much (0.1% of its [-1, 1] range), the
+# A neuron counts as moving if its activity varies by at least this much (0.1% of its maximum, tanh activity runs from -1 to 1), the
 # same bar as the readout noise and "active readouts" in the benchmarks. Below it, z-scoring would blow
 # fluctuations of a millionth up to full size and light up neurons that carry nothing usable.
 MOVE_THRESHOLD = 1e-3

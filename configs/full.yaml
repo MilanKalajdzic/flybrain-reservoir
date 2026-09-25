@@ -33,6 +33,7 @@ market:
   source: yfinance
   tickers: [SPY]
   start: "2003-01-01"
+  end: "2026-03-26"      # pinned, so reruns give the same numbers (Yahoo keeps adding days)
   horizon: 1
 
 eval:

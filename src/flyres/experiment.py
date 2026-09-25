@@ -290,7 +290,8 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
         test = post.dates[ev.train_min:]
         years = len(test) / 252
         fwd = post.fwd_ret[ev.train_min:]
-        up = float((fwd[np.isfinite(fwd)] > 0).mean())
+        moved = fwd[np.isfinite(fwd) & (fwd != 0)]  # like metrics.hit_rate, flat days don't count
+        up = float((moved > 0).mean())
         m = metrics[metrics["ticker"] == ticker]
         lines += ["", f"## {ticker}: out-of-sample, {test[0]:%Y-%m-%d} to {test[-1]:%Y-%m-%d} ({years:.1f} years)", "",
                   f"Up days in the test period: {up:.1%} (an always-long model gets this hit rate).", "",

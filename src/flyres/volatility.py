@@ -27,8 +27,8 @@ Losses:
              (robust to noise in the realized-variance proxy, Patton 2011). A log forecast becomes a
              variance forecast with the lognormal correction exp(ŷ + s²/2), s² = the readout's validation
              error at fit time. Log models target E[log RV], not E[RV], which costs them on QLIKE: on
-             simulated GARCH data, HAR fitted on variance beats HAR fitted on logs by ~10% QLIKE. So QLIKE
-             is a second view with har_levels as its reference, not the headline.
+             simulated GARCH data, HAR fitted on variance beats HAR fitted on logs on QLIKE (a few percent at
+             5 days, 13-24% at 22 days). So QLIKE is a second view with har_levels as its reference, not the headline.
 """
 from __future__ import annotations
 

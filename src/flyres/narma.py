@@ -10,7 +10,7 @@ u(t-9) u(t) needs a memory of 10 steps and a multiplication, so a linear model o
 can't do it; a good reservoir gets the error well below that. Scored by NRMSE = RMSE / std(y) on
 held-out steps (lower is better; 1 = no better than predicting the mean).
 
-Like memory capacity, the main score adds readout noise (memory.readout_noise, 0.1% of a neuron's range)
+Like memory capacity, the main score adds readout noise (memory.readout_noise, 0.1% of a neuron's maximum activity)
 to the recorded states before fitting. Noise-free, a readout decodes fluctuations of a millionth: on the
 whole brain the fly's NARMA error was 0.41 noise-free and 0.83 with the noise (the degree-preserving
 shuffle: 0.39 and 0.42). The noise-free score is kept for reference.
@@ -194,7 +194,7 @@ def narma_markdown(cfg: ExperimentConfig, grid: pd.DataFrame, best: pd.DataFrame
              f"{len(cfg.seeds)} seed(s); a gain is valid when at most {STABLE_MAX_UNSTABLE:.0%} of readouts are unstable "
              f"in each of {cfg.memory.stability_tests} latching tests, for every seed.", ""]
     if noisy:
-        lines += [f"*With readout noise*: noise of std {noise:g} ({noise:.1%} of a neuron's range) on every recorded "
+        lines += [f"*With readout noise*: noise of std {noise:g} ({noise:.1%} of a neuron's maximum activity) on every recorded "
                   "state before fitting, as for memory capacity. Best gains are picked on this score; the noise-free "
                   "score can come from fluctuations of a millionth.", ""]
     lines += [f"Linear baseline (ridge on the last {LAGS} inputs, no reservoir): NRMSE "

@@ -34,6 +34,7 @@ market:
   source: yfinance
   tickers: [SPY]
   start: "2003-01-01"
+  end: "2026-03-26"      # pinned, so reruns give the same numbers (Yahoo keeps adding days)
   features: [r1, r5, r20, vol20, vol_ratio]
   horizon: 1
 

@@ -61,3 +61,26 @@ def test_yfinance_layouts():
     flat = pd.DataFrame({"Close": [1.0, 2.0, 3.0], "Open": [1.0, 1.0, 1.0]}, index=idx)
     assert list(close_from_yfinance(flat, ["SPY"]).columns) == ["SPY"]
     assert close_from_yfinance(pd.DataFrame(), ["SPY"]).empty
+
+
+def test_download_end_date_is_inclusive_and_cached(tmp_path, monkeypatch):
+    """The configs pin an end date; that day must be in the data (yfinance's own end is exclusive)."""
+    import sys
+    import types
+
+    from flyres.market import download_prices
+
+    calls = []
+
+    def download(tickers, start, end, **kw):  # mimics yfinance: rows strictly before `end`
+        calls.append(end)
+        idx = pd.bdate_range(start, "2026-04-10")
+        idx = idx[idx < pd.Timestamp(end)] if end else idx
+        return pd.DataFrame({"Close": np.linspace(100, 110, len(idx))}, index=idx)
+
+    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(download=download))
+    close = download_prices(["SPY"], "2026-01-02", "2026-03-26", cache_dir=tmp_path)
+    assert close.index[-1] == pd.Timestamp("2026-03-26") and calls == ["2026-03-27"]
+    again = download_prices(["SPY"], "2026-01-02", "2026-03-26", cache_dir=tmp_path)
+    pd.testing.assert_frame_equal(close, again, check_freq=False)
+    assert len(calls) == 1  # second call came from the cache

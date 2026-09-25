@@ -188,8 +188,7 @@ def plot_activity_heatmap(dev: pd.DataFrame, close: pd.Series, episodes: dict | 
     """
     from matplotlib.colors import LinearSegmentedColormap, Normalize
 
-    cmap = LinearSegmentedColormap.from_list("seq_blue", SEQ_BLUE)
-    cmap.set_bad(SURFACE)
+    cmap = LinearSegmentedColormap.from_list("seq_blue", SEQ_BLUE).with_extremes(bad=SURFACE)
     labels = list(dev.columns)
     if share is not None:
         def pct(s):
@@ -444,7 +443,7 @@ def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", 
     Filled markers = valid reservoir, hollow = some readouts latch or go chaotic."""
     panels = [("memory", "Noise-free (standard benchmark)")]
     if "memory_noisy" in summary.columns:
-        label = f"With readout noise ({noise:.1%} of range)" if noise else "With readout noise"
+        label = f"With readout noise ({noise:.1%} of max activity)" if noise else "With readout noise"
         panels = [("memory_noisy", label)] + panels
     fig, axes = _figure(len(panels), figsize=(5.2 * len(panels) + 1.6, 4.1), sharey=True)
     axes = np.atleast_1d(axes)
@@ -538,7 +537,7 @@ def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: 
     ax.set_yticks(range(len(wirings)), [LABELS[w] for w in wirings])
     ax.set_ylim(len(wirings) - 0.5, -0.5)  # same row centres as the heatmap
     ax.tick_params(axis="y", length=0)
-    ax.set_xlabel("memory capacity" + (f", readout noise {noise:.1%} of range" if noisy and noise else ""),
+    ax.set_xlabel("memory capacity" + (f", readout noise {noise:.1%} of max activity" if noisy and noise else ""),
                   color=INK_2, fontsize=9)
     handles = [plt.Line2D([], [], marker="o", linestyle="", markersize=7, markerfacecolor=SURFACE,
                           markeredgecolor=INK_2, markeredgewidth=1.6, label="best single gain"),
@@ -714,7 +713,7 @@ def plot_narma(grid: pd.DataFrame, baseline: float | None = None, noise: float |
     Filled markers = valid reservoir, hollow = some readouts latch or go chaotic."""
     panels = [("nrmse", "Noise-free")]
     if "nrmse_noisy" in grid.columns:
-        panels = [("nrmse_noisy", f"With readout noise ({noise:.1%} of range)" if noise else "With readout noise")] + panels
+        panels = [("nrmse_noisy", f"With readout noise ({noise:.1%} of max activity)" if noise else "With readout noise")] + panels
     fig, axes = _figure(len(panels), figsize=(4.6 * len(panels) + 1.8, 4.0), sharey=True)
     axes = np.atleast_1d(axes)
     lo, hi = grid["gain"].min(), grid["gain"].max()
@@ -745,4 +744,42 @@ def plot_narma(grid: pd.DataFrame, baseline: float | None = None, noise: float |
                  y=1.08)
     fig.text(0.01, 1.01, "Mean over seeds. Hollow = invalid reservoir (some neurons latch or go chaotic).",
              ha="left", fontsize=8.5, color=INK_2)
+    return _save(fig, path)
+
+
+def plot_robustness(best: pd.DataFrame, labels: dict, noise: float | None = None, path=None):
+    """Each wiring's memory at its best valid gain, for each variant of the setup (groups left to right).
+    best: rows per variant and wiring as from robustness.summarize_robustness. labels: variant -> label.
+    Bars = sd over seeds; x = no valid gain for that wiring."""
+    metric = "memory_noisy" if "memory_noisy" in best.columns else "memory"
+    variants = [v for v in labels if v in set(best["variant"])]
+    wirings = [w for w in WIRINGS if w in set(best["wiring"])]
+    fig, ax = _figure(figsize=(7.6, 3.9))
+    width = 0.72
+    offsets = np.linspace(-width / 2, width / 2, len(wirings)) if len(wirings) > 1 else np.zeros(1)
+    for j, w in enumerate(wirings):
+        b = best[best["wiring"] == w].set_index("variant").reindex(variants)
+        x = np.arange(len(variants)) + offsets[j]
+        y, sd = b[metric].to_numpy(float), b[f"{metric}_sd"].to_numpy(float)
+        ok = np.isfinite(y)
+        main = w == "connectome"
+        ax.errorbar(x[ok], y[ok], yerr=np.nan_to_num(sd[ok]), fmt="none", ecolor=WIRING_COLORS[w], elinewidth=1.4,
+                    capsize=0, zorder=2)
+        ax.scatter(x[ok], y[ok], s=70 if main else 46, color=WIRING_COLORS[w], edgecolors=SURFACE, linewidths=2,
+                   zorder=4 if main else 3, label=LABELS[w])
+        ax.scatter(x[~ok], np.zeros((~ok).sum()), marker="x", s=40, color=WIRING_COLORS[w], linewidths=1.6, zorder=3)
+    ax.set_xticks(np.arange(len(variants)), [labels[v] for v in variants])
+    ax.tick_params(axis="x", length=0)
+    ax.grid(False, axis="x")
+    ax.set_xlim(-0.6, len(variants) - 0.4)
+    ax.set_ylim(bottom=0)
+    ax.set_ylabel("memory capacity" + (" (readout noise)" if metric == "memory_noisy" else ""))
+    _legend(ax, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    fig.tight_layout()
+    fig.suptitle("Does the fly still lose when the setup changes?", x=0.01, ha="left", fontsize=11,
+                 fontweight="bold", color=INK, y=1.08)
+    sub = "Each wiring at its own best valid gain; mean over seeds, bars = sd, x = no valid gain."
+    if noise and metric == "memory_noisy":
+        sub = f"Memory with readout noise (std {noise:g}). " + sub
+    fig.text(0.01, 1.01, sub, ha="left", fontsize=8.5, color=INK_2)
     return _save(fig, path)

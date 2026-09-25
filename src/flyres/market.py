@@ -27,15 +27,20 @@ DEFAULT_FEATURES = ("r1", "r5", "r20", "vol20", "vol_ratio")
 
 def download_prices(tickers, start: str = "2003-01-01", end: str | None = None, cache_dir: str | Path = "data/cache",
                     refresh: bool = False) -> pd.DataFrame:
-    """Adjusted close prices from Yahoo Finance (cached as parquet). Columns = tickers."""
+    """Adjusted close prices from Yahoo Finance (cached as parquet). Columns = tickers.
+
+    `end` is inclusive (yfinance's own `end` isn't, so it gets the day after). With end=None the data
+    runs to the latest close and every rerun shifts slightly; the configs pin an end date instead.
+    """
     tickers = [tickers] if isinstance(tickers, str) else list(tickers)
     cache = Path(cache_dir) / f"prices_{'_'.join(tickers)}_{start}_{end or 'latest'}.parquet"
     if cache.exists() and not refresh:
-        return pd.read_parquet(cache)
+        return pd.read_parquet(cache).loc[start:end]
     import yfinance as yf
 
-    raw = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False, threads=False)
-    close = close_from_yfinance(raw, tickers)
+    day_after = None if end is None else (pd.Timestamp(end) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    raw = yf.download(tickers, start=start, end=day_after, auto_adjust=True, progress=False, threads=False)
+    close = close_from_yfinance(raw, tickers).loc[start:end]
     if close.empty:
         raise RuntimeError(f"yfinance returned no data for {tickers}. Retry later, or use market.source: csv")
     cache.parent.mkdir(parents=True, exist_ok=True)

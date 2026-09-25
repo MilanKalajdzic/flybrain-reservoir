@@ -135,7 +135,7 @@ def sweep_markdown(cfg: ExperimentConfig, summary: pd.DataFrame, best: pd.DataFr
              f"{len(cfg.seeds)} seed(s). A gain is valid when at most {max_unstable:.0%} of readouts are unstable "
              f"in every latching test ({cfg.memory.stability_tests} per seed) and for every seed.", ""]
     if noisy:
-        lines += [f"*With readout noise*: noise of std {noise:g} ({noise:.1%} of a neuron's range) is added to every "
+        lines += [f"*With readout noise*: noise of std {noise:g} ({noise:.1%} of a neuron's maximum activity) is added to every "
                   "readout before fitting, so only memory that survives a little noise counts. Best gains are picked "
                   "on this number. The noise-free number is the standard benchmark but can come from fluctuations of "
                   "a millionth.", ""]

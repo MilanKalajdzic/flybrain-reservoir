@@ -4,8 +4,8 @@
     python scripts/report.py results/small results/rho05
 
 For each run folder: market metrics per model, memory per wiring (noise-free and with readout noise),
-the dynamics diagnostics, and, if gain_sweep.py / region_gains.py were run for it, each wiring's best
-valid gain and what per-region gains add.
+the dynamics diagnostics, and, for whichever of gain_sweep.py, region_gains.py, narma.py, homeostasis.py,
+robustness.py and vol_forecast.py were run for it, their headline tables.
 """
 import argparse
 from pathlib import Path
@@ -120,6 +120,24 @@ def run_report(folder: Path) -> list[str]:
             lines.append(f"| {w} | {pm(s[f'{col}_single'])} | {pm(s[f'{col}_homeostatic'])} | {d:+.1f} | "
                          f"{', '.join(f'{t:g}' for t in s['target'])} | "
                          f"{int(s['valid_single'].sum())}/{len(s)} → {int(s['valid_homeostatic'].sum())}/{len(s)} |")
+        lines.append("")
+    rob = folder / "robustness" / "best.csv"
+    if rob.exists():
+        from flyres.robustness import VARIANTS, fly_gap
+
+        b = pd.read_csv(rob)
+        metric = "memory_noisy" if "memory_noisy" in b.columns else "memory"
+        wirings = order(b["wiring"].unique())
+        lines += ["Robustness, memory " + ("with readout noise " if metric == "memory_noisy" else "")
+                  + "at each wiring's best valid gain", "",
+                  "| variant | " + " | ".join(wirings) + " | best control / fly |",
+                  "|---|" + "---|" * (len(wirings) + 1)]
+        gap = fly_gap(b, metric).set_index("variant")
+        for v in [v for v in VARIANTS if v in set(b["variant"])]:
+            s = b[b["variant"] == v].set_index("wiring")
+            cells = ["-" if w not in s.index or not np.isfinite(s.loc[w, metric])
+                     else f"{s.loc[w, metric]:.1f} ± {s.loc[w, metric + '_sd']:.1f}" for w in wirings]
+            lines.append(f"| {VARIANTS[v][0]} | " + " | ".join(cells) + f" | {gap.loc[v, 'ratio']:.1f}× |")
         lines.append("")
     for sub, label in (("volatility", "standard gain"), ("volatility_best_gain", "each wiring at its best valid gain")):
         vm = folder / sub / "metrics.csv"

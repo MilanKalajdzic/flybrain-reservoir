@@ -246,7 +246,7 @@ def region_markdown(cfg: ExperimentConfig, results: pd.DataFrame, region_table: 
              f"{STABLE_MAX_UNSTABLE:.0%} of readouts unstable in each of {cfg.memory.stability_tests} latching "
              "tests.", ""]
     if noisy:
-        lines += [f"Memory *with readout noise* (std {noise:g}, {noise:.1%} of a neuron's range) is what the search "
+        lines += [f"Memory *with readout noise* (std {noise:g}, {noise:.1%} of a neuron's maximum activity) is what the search "
                   "maximizes; noise-free memory is shown for reference.", ""]
     head = "| wiring | best single gain | search from | "
     head += ("memory with noise: single gain | with per-region gains | change | " if noisy else "")

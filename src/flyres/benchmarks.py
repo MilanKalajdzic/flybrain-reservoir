@@ -19,7 +19,7 @@ def memory_capacities(reservoir: Reservoir, record_idx, noise_levels=(0.0,), n_s
     """Memory capacity at several readout-noise levels from one reservoir run.
 
     Noise level s adds Gaussian noise with std s to every recorded state (states live in [-1, 1], so
-    s = 0.001 is 0.1% of a neuron's range) before the readout is fitted. Without noise, the readout
+    s = 0.001 is 0.1% of a neuron's maximum activity) before the readout is fitted. Without noise, the readout
     standardizes every neuron and can exploit fluctuations of a millionth that no physical system could
     carry; with a little noise, only memory that is actually usable counts.
 
