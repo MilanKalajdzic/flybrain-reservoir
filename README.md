@@ -32,9 +32,10 @@ number below from the result folders.
 worse. Its wiring is a set of dense knots, one inside almost every brain region, and a reservoir
 can't drive them all at once. With one global gain, tuning brings the fly level with the controls in
 a small circuit but leaves it 8–11× behind across the whole brain. Giving every region, or every
-neuron, its own gain helps random wiring far more than the fly. On volatility, where there is something to forecast, every
-reservoir beats the standard HAR benchmark by about 17% at a 5-day horizon, but a linear model with
-the same inputs already gets 15% of that, and the wiring moves the result by about 1%.
+neuron, its own gain helps random wiring far more than the fly, and a second benchmark (NARMA-10)
+agrees. On volatility, where there is something to forecast, every reservoir beats the standard HAR
+benchmark by about 17% at a 5-day horizon, but a linear model with the same inputs already gets 15%
+of that, and the wiring moves the result by about 1%.
 
 **Markets: no edge at either scale, and the wiring doesn't matter.** Every reservoir has an IC around
 0.015 (t ≈ 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe
@@ -201,11 +202,41 @@ Four targets; each wiring keeps its best valid one, judged on fresh inputs as be
   one machine and 1 on another. Erdős–Rényi's whole-brain number varies a lot between seeds
   (39.5 ± 37.6).
 
+**A second benchmark: NARMA-10 (`scripts/narma.py`).** Memory capacity only asks a reservoir to
+replay its input. NARMA-10, the standard benchmark since Jaeger (2003), asks it to compute with it:
+the target includes the product of two inputs 10 steps apart, so it needs memory *and* a
+nonlinearity. A linear model of the last 10 inputs gets an error of 0.60. Every wiring runs at
+every gain and is judged at its best valid one, with the same readout noise as memory capacity.
+
+<p align="center">
+  <img src="docs/img/narma_full.png" width="900" alt="NARMA-10 error against gain for the connectome and four control wirings across the whole CNS, with and without readout noise">
+</p>
+
+| NARMA-10 error (NRMSE, lower is better), best valid gain | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
+|---|---|---|---|---|---|
+| 3,000 neurons, readout noise | 0.70 | 0.67 | 0.70 | 0.66 | 0.66 |
+| whole CNS, readout noise | **0.77** | 0.42 | 0.75 | 0.76 | 0.50 |
+| *whole CNS, noise-free* | *0.43* | *0.37* | *0.43* | *0.38* | *0.40* |
+
+- **Same split as memory.** Across the whole brain, the two wirings that scramble the fly's
+  connections beat the linear model (0.42 and 0.50); the three that keep them don't (0.75 to 0.77),
+  even at their best gain.
+- **Memory capacity predicts it.** Over all valid whole-brain reservoirs, more memory means lower
+  NARMA error (Spearman ρ = −0.69, 90 reservoirs; −0.30 in the small circuit). So memory capacity
+  isn't a quirky benchmark: it tracks the ability to compute with the past.
+- **In the small circuit nothing beats the linear model** once there's readout noise (best 0.66
+  against 0.60). 300 readout neurons out of 3,000 can't carry the product of inputs 10 steps apart
+  cleanly enough.
+- **Noise-free, every wiring looks alike** (0.37 to 0.43 across the whole brain, in line with
+  published echo state results), because the readout decodes the fly's millionth-sized
+  fluctuations. The first version of this benchmark was scored that way and flattered the fly;
+  readout noise is now the main score, as for memory.
+
 So the honest answer: biological wiring isn't a better reservoir, and at brain scale it's a clearly
 worse one. The fly brain is **a set of dense knots, one inside almost every region, and a reservoir
-can't drive them all at once**, whether it gets one global gain, one per region or one per neuron.
-The only place the fly keeps up is a small circuit with one global gain, and finer gains take that
-away too.
+can't drive them all at once**, whether it gets one global gain, one per region or one per neuron,
+and on both benchmarks. The only place the fly keeps up is a small circuit with one global gain, and
+finer gains take that away too.
 
 ### Volatility: a question with an answer
 
@@ -415,8 +446,8 @@ python scripts/run_experiment.py --config configs/small.yaml --set reservoir.nor
 - Subgraph size is just `subgraph.n_neurons`; everything is sparse, so 3k to 50k is a config change.
 - `configs/full.yaml` runs the whole CNS (`method: all`) with 4 parallel jobs. Meant for a
   desktop (32 GB RAM is plenty). With the GPU backend on an RX 7900 XTX the experiment takes about
-  12 minutes, the gain sweep about 6, the per-region search about 35 and the homeostatic rule about
-  20; CPU-only is slower.
+  12 minutes, the gain sweep about 6, NARMA-10 about 7, the per-region search about 35 and the
+  homeostatic rule about 20; CPU-only is slower.
 
 ### GPU (AMD on Linux)
 
@@ -503,8 +534,8 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - Realized variance comes from daily squared returns, the only thing daily closes allow. That proxy
   is noisy; with intraday (5-minute) data every volatility model would be more precise and HAR harder
   to beat.
-- Memory capacity with white-noise input is one benchmark. Other tasks (nonlinear transforms,
-  chaotic time series) could rank the wirings differently.
+- Two benchmarks (memory capacity and NARMA-10) rank the wirings the same way. Other tasks, such
+  as predicting a chaotic time series, could still rank them differently.
 
 ## Repo layout
 
