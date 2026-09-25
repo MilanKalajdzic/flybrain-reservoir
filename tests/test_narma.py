@@ -41,17 +41,23 @@ def test_run_narma_end_to_end(tmp_path):
     cfg = _cfg(tmp_path)
     runs, baseline = run_narma(cfg, gains=[0.5, 0.9, 2.0], verbose=False)
     assert len(runs) == 2 * 2 * 3 and runs["nrmse"].between(0, 2).all()
+    # readout noise can only hide information from the readout (up to fitting noise)
+    assert (runs["nrmse_noisy"] >= runs["nrmse"] - 0.02).all()
     grid = summarize_narma(runs)
     best = best_narma(grid, 0.9)
-    assert list(best["wiring"]) == ["connectome", "erdos_renyi"] and best["standard_nrmse"].notna().all()
-    # some gain beats the lags-only model clearly: the reservoir computes the product term
+    assert list(best["wiring"]) == ["connectome", "erdos_renyi"] and best["standard"].notna().all()
+    assert {"nrmse_noisy", "nrmse"} <= set(best.columns)
+    # some gain beats the lags-only model clearly, noise-free: the reservoir computes the product term
     # (margin ~0.07 on numpy/scipy versions tested; a 200-neuron reservoir only ties the baseline)
-    assert best["nrmse"].min() < baseline["nrmse"].mean() - 0.03
+    assert grid["nrmse"].min() < baseline["nrmse"].mean() - 0.03
     sweep = runs[["wiring", "seed", "gain"]].assign(memory_capacity_noisy=np.arange(len(runs), dtype=float))
     link = memory_link(runs, sweep)
     assert link is not None and "memory" in link
     md = narma_markdown(cfg, grid, best, baseline, link)
-    assert "NARMA-10" in md and "Linear baseline" in md and "Spearman" in md
+    assert "NARMA-10" in md and "Linear baseline" in md and "Spearman" in md and "readout noise" in md
+    cfg.memory.readout_noise = 0.0  # noise-free only still works
+    runs0, _ = run_narma(cfg, gains=[0.9], verbose=False)
+    assert "nrmse_noisy" not in runs0 and "nrmse_noisy" not in best_narma(summarize_narma(runs0), 0.9)
 
 
 def test_narma_script_and_report(tmp_path):

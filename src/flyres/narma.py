@@ -10,6 +10,11 @@ u(t-9) u(t) needs a memory of 10 steps and a multiplication, so a linear model o
 can't do it; a good reservoir gets the error well below that. Scored by NRMSE = RMSE / std(y) on
 held-out steps (lower is better; 1 = no better than predicting the mean).
 
+Like memory capacity, the main score adds readout noise (memory.readout_noise, 0.1% of a neuron's range)
+to the recorded states before fitting. Noise-free, a readout decodes fluctuations of a millionth: on the
+whole brain the fly's NARMA error was 0.41 noise-free and 0.83 with the noise (the degree-preserving
+shuffle: 0.39 and 0.42). The noise-free score is kept for reference.
+
 Like the gain sweep, every wiring runs at many gains and is judged at its best valid one, with the
 same reservoirs (input weights, bias, readout neurons, latching tests) as the memory benchmark.
 """
@@ -72,13 +77,17 @@ def linear_baseline(seed: int, n_steps: int = N_STEPS) -> float:
 
 
 def narma_score(reservoir: Reservoir, record_idx, seed: int, input_penalty: float = 0.001,
-                n_steps: int = N_STEPS) -> float:
-    """NRMSE of a readout on [u(t), reservoir state] for the NARMA-10 series of `seed`."""
+                readout_noise: float = 0.0, n_steps: int = N_STEPS) -> dict:
+    """NRMSE of a readout on [u(t), reservoir state] for the NARMA-10 series of `seed`: noise-free
+    ("nrmse") and, if readout_noise > 0, with that much Gaussian noise on every state ("nrmse_noisy")."""
     u, y = narma10(n_steps, seed)
     states = reservoir.run((4.0 * u - 1.0)[:, None].astype(np.float32), record_idx=record_idx)  # u in [-1, 1]
-    X = np.hstack([u[:, None], states])
     penalty = np.r_[input_penalty, np.ones(states.shape[1])]
-    return _fit_score(X, y, penalty)
+    out = {"nrmse": _fit_score(np.hstack([u[:, None], states]), y, penalty)}
+    if readout_noise > 0:
+        noisy = states + np.random.default_rng([seed, 12]).normal(0.0, readout_noise, states.shape)
+        out["nrmse_noisy"] = _fit_score(np.hstack([u[:, None], noisy]), y, penalty)
+    return out
 
 
 def narma_job(sub, cfg: ExperimentConfig, wiring: str, seed: int, gains) -> list[dict]:
@@ -93,8 +102,8 @@ def narma_job(sub, cfg: ExperimentConfig, wiring: str, seed: int, gains) -> list
                         rng=np.random.default_rng([seed, 4]), **reservoir_kwargs(cfg))
         stab = readout_stability(res, readout_idx, rng=np.random.default_rng([seed, 6]),
                                  n_tests=cfg.memory.stability_tests)
-        rows.append({"wiring": wiring, "seed": seed, "gain": float(g),
-                     "nrmse": narma_score(res, readout_idx, seed, cfg.reservoir.input_penalty), **stab})
+        rows.append({"wiring": wiring, "seed": seed, "gain": float(g), **stab,
+                     **narma_score(res, readout_idx, seed, cfg.reservoir.input_penalty, cfg.memory.readout_noise)})
     rows[-1]["seconds"] = time.time() - t0
     return rows
 
@@ -127,25 +136,36 @@ def run_narma(cfg: ExperimentConfig, gains=DEFAULT_GAINS, verbose: bool = True) 
 def summarize_narma(runs: pd.DataFrame, max_unstable: float = STABLE_MAX_UNSTABLE) -> pd.DataFrame:
     """Per wiring and gain: mean and sd of NRMSE over seeds, and whether every seed passes the latching tests."""
     g = runs.groupby(["wiring", "gain"])
-    out = pd.DataFrame({"nrmse": g["nrmse"].mean(), "nrmse_sd": g["nrmse"].std(),
-                        "active": g["active_readouts"].mean(), "unstable_worst": g["unstable_readouts"].max(),
+    cols = {"nrmse": g["nrmse"].mean(), "nrmse_sd": g["nrmse"].std()}
+    if "nrmse_noisy" in runs.columns:
+        cols.update(nrmse_noisy=g["nrmse_noisy"].mean(), nrmse_noisy_sd=g["nrmse_noisy"].std())
+    out = pd.DataFrame({**cols, "active": g["active_readouts"].mean(), "unstable_worst": g["unstable_readouts"].max(),
                         "seeds": g.size()}).reset_index()
     out["valid"] = out["unstable_worst"] <= max_unstable
     return out
 
 
+def metric_of(frame: pd.DataFrame) -> str:
+    """The main score: with readout noise when it was measured, noise-free otherwise."""
+    return "nrmse_noisy" if "nrmse_noisy" in frame.columns else "nrmse"
+
+
 def best_narma(grid: pd.DataFrame, standard_gain: float) -> pd.DataFrame:
+    """Each wiring's best valid gain by the main score (lowest error), with both scores there."""
+    metric = metric_of(grid)
+    scores = [c for c in ("nrmse_noisy", "nrmse_noisy_sd", "nrmse", "nrmse_sd") if c in grid.columns]
     rows = []
     for w, g in grid.groupby("wiring", sort=False):
         ok = g[g["valid"]]
         std = g[np.isclose(g["gain"], standard_gain)]
-        row = {"wiring": w, "standard_nrmse": std["nrmse"].iloc[0] if len(std) else np.nan,
+        row = {"wiring": w, "standard": std[metric].iloc[0] if len(std) else np.nan,
+               "standard_nrmse": std["nrmse"].iloc[0] if len(std) else np.nan,
                "valid_gains": len(ok), "gains_tried": len(g)}
         if len(ok):
-            b = ok.loc[ok["nrmse"].idxmin()]
-            row.update(best_gain=b["gain"], nrmse=b["nrmse"], nrmse_sd=b["nrmse_sd"], active=b["active"])
+            b = ok.loc[ok[metric].idxmin()]
+            row.update(best_gain=b["gain"], active=b["active"], **{c: b[c] for c in scores})
         else:
-            row.update(best_gain=np.nan, nrmse=np.nan, nrmse_sd=np.nan, active=np.nan)
+            row.update(best_gain=np.nan, active=np.nan, **{c: np.nan for c in scores})
         rows.append(row)
     rank = {w: i for i, w in enumerate(WIRINGS)}
     return pd.DataFrame(rows).sort_values("wiring", key=lambda s: s.map(rank)).reset_index(drop=True)
@@ -159,37 +179,52 @@ def memory_link(runs: pd.DataFrame, sweep: pd.DataFrame | None, max_unstable: fl
     col = "memory_capacity_noisy" if "memory_capacity_noisy" in sweep.columns else "memory_capacity"
     m = runs.merge(sweep[["wiring", "seed", "gain", col]].rename(columns={col: "memory"}),
                    on=["wiring", "seed", "gain"], how="inner")
+    m["error"] = m[metric_of(runs)]
     m = m[m["unstable_readouts"] <= max_unstable]
     return m if len(m) > 2 else None
 
 
 def narma_markdown(cfg: ExperimentConfig, grid: pd.DataFrame, best: pd.DataFrame, baseline: pd.DataFrame,
                    link: pd.DataFrame | None) -> str:
+    noisy = "nrmse_noisy" in grid.columns
+    noise = cfg.memory.readout_noise
     lines = [f"# NARMA-10: {cfg.name}", "",
              f"NRMSE on the last {N_TEST} of {N_STEPS} steps (lower is better; 1 = predicting the mean). Readout on "
              f"u(t) and the reservoir state, ridge penalty picked on the end of the training window. "
              f"{len(cfg.seeds)} seed(s); a gain is valid when at most {STABLE_MAX_UNSTABLE:.0%} of readouts are unstable "
-             f"in each of {cfg.memory.stability_tests} latching tests, for every seed.", "",
-             f"Linear baseline (ridge on the last {LAGS} inputs, no reservoir): NRMSE "
-             f"{baseline['nrmse'].mean():.3f} ± {baseline['nrmse'].std():.3f}.", "",
-             "## Each wiring", "",
-             f"| wiring | at the standard gain ({cfg.reservoir.spectral_radius:g}) | best valid gain | NRMSE there | "
-             "active readouts | valid gains |", "|---|---|---|---|---|---|"]
+             f"in each of {cfg.memory.stability_tests} latching tests, for every seed.", ""]
+    if noisy:
+        lines += [f"*With readout noise*: noise of std {noise:g} ({noise:.1%} of a neuron's range) on every recorded "
+                  "state before fitting, as for memory capacity. Best gains are picked on this score; the noise-free "
+                  "score can come from fluctuations of a millionth.", ""]
+    lines += [f"Linear baseline (ridge on the last {LAGS} inputs, no reservoir): NRMSE "
+              f"{baseline['nrmse'].mean():.3f} ± {baseline['nrmse'].std():.3f}.", "",
+              "## Each wiring", "",
+              f"| wiring | at the standard gain ({cfg.reservoir.spectral_radius:g}) | best valid gain | "
+              + ("with readout noise | " if noisy else "") + "noise-free | active readouts | valid gains |",
+              "|---|---|---|" + ("---|" if noisy else "") + "---|---|---|"]
     for _, r in best.iterrows():
-        best_txt = (f"{r['best_gain']:g} | {r['nrmse']:.3f} ± {r['nrmse_sd']:.3f} | {r['active']:.0%}"
-                    if np.isfinite(r["nrmse"]) else "none valid | - | -")
-        lines.append(f"| {r['wiring']} | {r['standard_nrmse']:.3f} | {best_txt} | {r['valid_gains']}/{r['gains_tried']} |")
+        def pm(m, s):
+            return f"{m:.3f} ± {s:.3f}" if np.isfinite(m) else "-"
+        gain = f"{r['best_gain']:g}" if np.isfinite(r["best_gain"]) else "none valid"
+        lines.append(f"| {r['wiring']} | {r['standard']:.3f} | {gain} | "
+                     + (f"{pm(r['nrmse_noisy'], r['nrmse_noisy_sd'])} | " if noisy else "")
+                     + f"{pm(r['nrmse'], r['nrmse_sd'])} | "
+                     + (f"{r['active']:.0%}" if np.isfinite(r["active"]) else "-")
+                     + f" | {r['valid_gains']}/{r['gains_tried']} |")
     if link is not None:
-        rho, p = stats.spearmanr(link["memory"], link["nrmse"])
+        rho, p = stats.spearmanr(link["memory"], link["error"])
         lines += ["", "## Does memory capacity predict NARMA?", "",
                   f"Over every valid reservoir (wiring x seed x gain, n = {len(link)}), Spearman correlation between "
-                  f"memory capacity (from the gain sweep) and NARMA-10 error: ρ = {rho:+.2f} (p = {p:.3f}). "
-                  "Negative = more memory, lower error."]
-    lines += ["", "## Full grid", "", "| wiring | gain | NRMSE | active readouts | unstable (worst seed) |",
-              "|---|---|---|---|---|"]
+                  f"memory capacity (from the gain sweep) and NARMA-10 error{' with readout noise' if noisy else ''}: "
+                  f"ρ = {rho:+.2f} (p = {p:.3f}). Negative = more memory, lower error."]
+    lines += ["", "## Full grid", "",
+              "| wiring | gain | " + ("NRMSE with readout noise | " if noisy else "") + "NRMSE noise-free | "
+              "active readouts | unstable (worst seed) |", "|---|---|" + ("---|" if noisy else "") + "---|---|---|"]
     for _, r in grid.iterrows():
         flag = "" if r["valid"] else " (invalid)"
-        lines.append(f"| {r['wiring']} | {r['gain']:g} | {r['nrmse']:.3f} ± {r['nrmse_sd']:.3f}{flag} | "
-                     f"{r['active']:.0%} | {r['unstable_worst']:.0%} |")
+        lines.append(f"| {r['wiring']} | {r['gain']:g} | "
+                     + (f"{r['nrmse_noisy']:.3f} ± {r['nrmse_noisy_sd']:.3f}{flag} | " if noisy else "")
+                     + f"{r['nrmse']:.3f} ± {r['nrmse_sd']:.3f}{flag} | {r['active']:.0%} | {r['unstable_worst']:.0%} |")
     lines.append("")
     return "\n".join(lines)

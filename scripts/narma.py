@@ -52,7 +52,8 @@ def main():
     baseline.to_csv(out / "linear_baseline.csv", index=False)
     save_config(cfg, out / "config_used.yaml")
     (out / "summary.md").write_text(narma_markdown(cfg, grid, best, baseline, link), encoding="utf-8")
-    plt.close(plotting.plot_narma(grid, baseline["nrmse"].mean(), path=out / "narma.png"))
+    plt.close(plotting.plot_narma(grid, baseline["nrmse"].mean(), noise=cfg.memory.readout_noise,
+                                  path=out / "narma.png"))
     print(best.round(3).to_string(index=False))
     print(f"linear baseline: {baseline['nrmse'].mean():.3f}")
     print(f"open {out / 'summary.md'}")

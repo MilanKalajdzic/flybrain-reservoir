@@ -95,13 +95,16 @@ def run_report(folder: Path) -> list[str]:
 
         grid = pd.read_csv(narma)
         best = best_narma(grid, 0.9)
+        noisy = "nrmse_noisy" in grid.columns
         base = folder / "narma" / "linear_baseline.csv"
-        lines += ["NARMA-10 error (NRMSE, lower is better)"
+        lines += ["NARMA-10 error (NRMSE, lower is better" + (", with readout noise" if noisy else "") + ")"
                   + (f"; linear baseline {pd.read_csv(base)['nrmse'].mean():.3f}" if base.exists() else ""), "",
-                  "| wiring | at gain 0.9 | best valid gain | NRMSE there | valid gains |", "|---|---|---|---|---|"]
+                  "| wiring | at gain 0.9 | best valid gain | NRMSE there | noise-free there | valid gains |",
+                  "|---|---|---|---|---|---|"]
         for _, r in best.iterrows():
-            there = f"{r['best_gain']:g} | {r['nrmse']:.3f}" if np.isfinite(r["nrmse"]) else "none | -"
-            lines.append(f"| {r['wiring']} | {r['standard_nrmse']:.3f} | {there} | {r['valid_gains']}/{r['gains_tried']} |")
+            main = r["nrmse_noisy"] if noisy else r["nrmse"]
+            there = (f"{r['best_gain']:g} | {main:.3f} | {r['nrmse']:.3f}" if np.isfinite(main) else "none | - | -")
+            lines.append(f"| {r['wiring']} | {r['standard']:.3f} | {there} | {r['valid_gains']}/{r['gains_tried']} |")
         lines.append("")
     homeo = folder / "homeostasis" / "results.csv"
     if homeo.exists():

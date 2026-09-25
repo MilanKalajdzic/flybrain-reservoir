@@ -331,7 +331,8 @@ same fitting code.
 - **NARMA-10** (Atiya & Parlos 2000): predict y(t+1) = 0.3 y(t) + 0.05 y(t) Σᵢ y(t−i) +
   1.5 u(t−9) u(t) + 0.1 from a random input u. The product of inputs 10 steps apart needs memory
   *and* a nonlinearity, so a linear model of the last 10 inputs only gets NRMSE ≈ 0.60. Scored on
-  held-out steps at every gain, like the gain sweep (`scripts/narma.py`).
+  held-out steps at every gain, like the gain sweep (`scripts/narma.py`), with the same readout noise
+  as memory capacity (noise-free kept for reference).
 - **Readout stability**: run the reservoir twice with inputs that differ only in the distant past.
   *Unstable readouts* end up in different states (they latched or went chaotic); a valid reservoir
   has none. Four such tests with different inputs, and the worst one counts
