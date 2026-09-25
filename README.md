@@ -5,13 +5,17 @@
 **Does a real fruit fly brain make a better forecasting machine than random wiring?**
 
 <p align="center">
-  <img src="docs/img/brain_2008.gif" width="820" alt="Animated frontal view of the fly brain: 3,000 connectome neurons glow brighter as the 2008 crash deepens">
+  <img src="docs/img/brain_2008_whole_cns.gif" width="820" alt="Animated frontal view of the whole fly CNS through the 2008 crash, twice: wired as in the connectome, where only scattered neurons glow, and rewired at random, where almost the whole brain lights up">
 </p>
 
-*3,000 neurons of the fly's sensory circuitry (mostly the smell pathway), wired exactly as in the
-male CNS connectome and driven by SPY returns and volatility through its sensory neurons. Brighter = further
-from that neuron's normal activity. It reacts to the crash; it doesn't see it coming.
-([COVID version](docs/img/brain_COVID.gif))*
+*All 166,700 neurons of the male fly CNS during the 2008 crash, driven by SPY returns and volatility
+through its sensory neurons. Left: wired exactly as in the connectome. Right: the same neurons
+with every connection rewired at random, each neuron keeping its number of partners. Brighter =
+further from that neuron's normal activity. Only neurons that move by more than 0.1% of their range
+are drawn: 5% of the fly's, against 96% of the rewired brain's. That's the main result in one
+picture: the fly's dense knots set the volume, and at that volume most of its brain barely moves.
+Both react to the crash; neither sees it coming.
+([COVID version](docs/img/brain_COVID_whole_cns.gif) · [the 3,000-neuron circuit](#what-the-fly-does-with-the-market))*
 
 This project uses the wiring diagram of the adult male *Drosophila* central nervous system
 (166,700 neurons, released in 2026 by FlyEM/HHMI Janelia with Google Research) as the recurrent
@@ -300,11 +304,21 @@ checked for lookahead: changing all prices after a date leaves every earlier for
 </p>
 
 Every crash shows up as a dark band: 2008, the 2010 flash crash, August 2011, 2015, February 2018,
-COVID, 2022. In crash months the average neuron sits roughly twice as far from its normal
-activity as in calm months, in every part of the circuit. Crashes raise variability rather than
-pushing groups up or down, which is why the figures show distance from normal instead of raw
-activity. The circuit is mostly the fly's smell pathway: olfactory receptor neurons, the
-antennal lobe, the mushroom body (its learning center) and about 400 brain-to-body command neurons.
+COVID, 2022, April 2025. In the worst months (October 2008, February 2018, March 2020) the average
+moving neuron sits about twice as far from its normal activity as in a typical calm month; over the
+three shaded crashes as a whole, about 30% further. Every group that moves reacts the same way.
+Crashes raise variability rather than pushing groups up or down, which is why the figures show
+distance from normal instead of raw activity. The circuit is grown outward from the fly's sensory
+neurons, so it's mostly the smell pathway and what it feeds: olfactory receptor neurons, the
+antennal lobe, 1,550 central-brain neurons and about 400 brain-to-body command neurons. Two groups never move at all: the mushroom body (the fly's learning
+center, 42 neurons here) and 56 visual neurons. Across the whole brain the same bands show up in
+every group that moves, but most of it doesn't: 30–40% of the nerve cord, motor and ascending
+neurons move, 6% of the central brain, under 1% of the visual system and the mushroom body, and none
+of the central complex ([whole-brain version](docs/img/activity_heatmap_whole_cns.png)).
+
+<p align="center">
+  <img src="docs/img/brain_2008.gif" width="820" alt="Animated frontal view of the fly brain: the 3,000-neuron sensory circuit glows brighter as the 2008 crash deepens">
+</p>
 
 It also habituates. In the animation, October 2008 glows far brighter than the actual bottom in
 March 2009. The inputs are measured against the trailing year: in October, volatility was 4.6
@@ -425,8 +439,10 @@ python scripts/report.py                                      # headline numbers
 ```
 
 Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/` have the rest.
-`brain_activity.py` writes the heatmap and the animation to `results/small/brain/` (pick another
-crash with `--window 2020-01-01 2020-08-31 --name COVID`). `gain_sweep.py` writes
+`brain_activity.py` writes the heatmap and animations of the 2008 and COVID crashes to
+`results/small/brain/` (another window with `--window 2022-01-01 2022-10-31 --name 2022`;
+`--compare degree_preserving` adds the rewired brain side by side, as in the animation at the top;
+`--replot` redraws from the saved activity without simulating). `gain_sweep.py` writes
 `results/small/gain_sweep/` (summary, CSVs, figure); widen the grid with `--gains 0.5 1 2 3 6 12 20`.
 `region_gains.py` writes `results/small/region_gains/`; add `--set n_jobs=4` to use more cores.
 `vol_forecast.py` writes `results/small/volatility/` (run it after `run_experiment.py` so it can relate
@@ -447,7 +463,9 @@ python scripts/run_experiment.py --config configs/small.yaml --set reservoir.nor
 - `configs/full.yaml` runs the whole CNS (`method: all`) with 4 parallel jobs. Meant for a
   desktop (32 GB RAM is plenty). With the GPU backend on an RX 7900 XTX the experiment takes about
   12 minutes, the gain sweep about 6, NARMA-10 about 7, the per-region search about 35 and the
-  homeostatic rule about 20; CPU-only is slower.
+  homeostatic rule about 20; CPU-only is slower. The animation at the top is
+  `brain_activity.py --config configs/full.yaml --set reservoir.backend=torch --compare degree_preserving`;
+  it simulates the whole CNS in blocks of 20,000 recorded neurons, so memory stays small.
 
 ### GPU (AMD on Linux)
 
@@ -557,7 +575,7 @@ src/flyres/
   volatility.py   realized-volatility forecasts: HAR benchmarks, reservoir readouts, DM tests
   activity.py     neuron groups, activity relative to normal, soma positions
   experiment.py   runs everything and writes results
-  plotting.py     figures and the brain animation
+  plotting.py     figures and the brain animations
   synthetic.py    fake data for tests and the offline demo
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
                   gain_sweep.py, hot_spots.py, region_gains.py, homeostasis.py, narma.py,

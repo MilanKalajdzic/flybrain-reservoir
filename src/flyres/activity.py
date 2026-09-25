@@ -79,11 +79,17 @@ def neuron_groups(neurons: pd.DataFrame, input_idx, min_size: int = 8) -> pd.Ser
     return groups.replace(fold)
 
 
-def zscore(states: np.ndarray) -> np.ndarray:
-    """Each neuron relative to its own normal level. Neurons that never move stay at 0."""
+# A neuron counts as moving if its activity varies by at least this much (0.1% of its [-1, 1] range), the
+# same bar as the readout noise and "active readouts" in the benchmarks. Below it, z-scoring would blow
+# fluctuations of a millionth up to full size and light up neurons that carry nothing usable.
+MOVE_THRESHOLD = 1e-3
+
+
+def zscore(states: np.ndarray, min_std: float = MOVE_THRESHOLD) -> np.ndarray:
+    """Each neuron relative to its own normal level. Neurons that barely move (std below `min_std`) stay at 0."""
     mean = states.mean(axis=0)
     sd = states.std(axis=0)
-    return ((states - mean) / np.where(sd > 1e-6, sd, np.inf)).astype(np.float32)
+    return ((states - mean) / np.where(sd >= min_std, sd, np.inf)).astype(np.float32)
 
 
 def weekly(values: np.ndarray, dates: pd.DatetimeIndex, freq: str = "W-FRI") -> pd.DataFrame:
@@ -92,11 +98,61 @@ def weekly(values: np.ndarray, dates: pd.DatetimeIndex, freq: str = "W-FRI") -> 
 
 
 def group_deviation(z: np.ndarray, groups: pd.Series, dates: pd.DatetimeIndex, freq: str = "W-FRI") -> pd.DataFrame:
-    """Mean |z| per group and period: how far from normal each pathway stage is (about 0.8 = a normal week)."""
+    """Mean |z| per group and period over the group's moving neurons: how far from normal each pathway
+    stage is (about 0.8 = a normal week). A group with no moving neuron is all NaN.
+
+    z comes from `zscore`, so neurons that barely move are exactly 0 throughout."""
     wk = weekly(np.abs(z), dates, freq)
-    out = {g: wk.loc[:, np.flatnonzero((groups == g).to_numpy())].mean(axis=1)
-           for g in GROUP_ORDER if (groups == g).any()}
+    live = np.abs(z).max(axis=0) > 0
+    g = np.asarray(groups)
+    out = {name: (wk.loc[:, np.flatnonzero((g == name) & live)].mean(axis=1) if ((g == name) & live).any()
+                  else pd.Series(np.nan, index=wk.index))
+           for name in GROUP_ORDER if (g == name).any()}
     return pd.DataFrame(out)
+
+
+def moving_share(groups: pd.Series, moving: np.ndarray) -> pd.Series:
+    """Fraction of each group's neurons that move, in GROUP_ORDER."""
+    share = pd.Series(np.asarray(moving, dtype=float)).groupby(np.asarray(groups)).mean()
+    return share.reindex([g for g in GROUP_ORDER if g in share.index])
+
+
+def stream_activity(reservoir, X: np.ndarray, washout: int, dates, groups: pd.Series, windows: dict,
+                    chunk: int = 20_000, min_std: float = MOVE_THRESHOLD, freq: str = "MS"):
+    """Group deviations and weekly glow without holding every neuron's full history in memory.
+
+    The whole CNS over 20 years is ~166k neurons x ~5,500 days, too big for one array, so the reservoir
+    is re-run once per block of `chunk` neurons (same inputs, so the same dynamics) and only the
+    summaries are kept. Returns (group deviation per `freq` period, averaged over each group's moving
+    neurons as in `group_deviation`, {window name: weekly mean |z| over that window, weeks x neurons},
+    bool mask of neurons that move by at least `min_std`).
+    """
+    dates = pd.DatetimeIndex(dates)
+    n = reservoir.n
+    groups = pd.Series(np.asarray(groups), dtype=object)
+    sums, counts, parts = {}, {}, {name: [] for name in windows}
+    moving = np.zeros(n, dtype=bool)
+    week_index = {}
+    for start in range(0, n, chunk):
+        idx = np.arange(start, min(n, start + chunk))
+        states = reservoir.run(X, record_idx=idx, washout=washout)
+        moving[idx] = states.std(axis=0) >= min_std
+        az = np.abs(zscore(states, min_std))
+        del states
+        per = weekly(az, dates, freq)
+        g = groups.iloc[idx].to_numpy()
+        for name in pd.unique(g):
+            cols = np.flatnonzero((g == name) & moving[idx])  # the others are 0 throughout
+            sums[name] = sums.get(name, 0) + per.iloc[:, cols].sum(axis=1)
+            counts[name] = counts.get(name, 0) + len(cols)
+        wk = weekly(az, dates)
+        for name, (a, b) in windows.items():
+            part = wk.loc[a:b]
+            week_index[name] = part.index
+            parts[name].append(part.to_numpy(np.float32))
+    dev = pd.DataFrame({g: sums[g] / counts[g] if counts[g] else sums[g] * np.nan for g in GROUP_ORDER if g in sums})
+    glow = {name: pd.DataFrame(np.hstack(p), index=week_index[name]) for name, p in parts.items()}
+    return dev, glow, moving
 
 
 def soma_positions(raw_dir: str | Path, body_ids) -> np.ndarray:

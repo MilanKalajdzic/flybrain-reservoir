@@ -179,11 +179,22 @@ GLOW = ["#22354d", "#256abf", "#3987e5", "#86b6ef", "#e6f0fd"]
 
 
 def plot_activity_heatmap(dev: pd.DataFrame, close: pd.Series, episodes: dict | None = None, vmin: float = 0.5,
-                          vmax: float = 1.6, ticker: str = "SPY", path=None):
-    """Distance-from-normal per pathway stage over time (rows = groups), under the SPY price for context."""
+                          vmax: float = 1.6, ticker: str = "SPY", path=None, share: pd.Series | None = None,
+                          title: str = "How stirred up each part of the fly circuit is"):
+    """Distance-from-normal per pathway stage over time (rows = groups), under the SPY price for context.
+
+    share: fraction of each group's neurons that move, added to the row labels. Groups where none
+    move (all-NaN rows) are drawn blank.
+    """
     from matplotlib.colors import LinearSegmentedColormap, Normalize
 
     cmap = LinearSegmentedColormap.from_list("seq_blue", SEQ_BLUE)
+    cmap.set_bad(SURFACE)
+    labels = list(dev.columns)
+    if share is not None:
+        def pct(s):
+            return "none move" if s == 0 else "<1% move" if s < 0.01 else f"{s:.0%} move"
+        labels = [f"{g}  ·  {pct(share.get(g, 0.0))}" for g in dev.columns]
     weeks = dev.index
     step = weeks[-1] - weeks[-2] if len(weeks) > 1 else pd.Timedelta(days=7)
     edges = weeks.append(pd.DatetimeIndex([weeks[-1] + step]))
@@ -223,106 +234,75 @@ def plot_activity_heatmap(dev: pd.DataFrame, close: pd.Series, episodes: dict | 
                            norm=Normalize(vmin, vmax), shading="flat", rasterized=True)
     ax_h.set_xlim(edges[0], edges[-1])
     ax_h.hlines(np.arange(1, dev.shape[1]), edges[0], edges[-1], color=SURFACE, linewidth=2)  # row gaps
-    ax_h.set_yticks(np.arange(dev.shape[1]) + 0.5, dev.columns)
+    ax_h.set_yticks(np.arange(dev.shape[1]) + 0.5, labels)
     ax_h.invert_yaxis()
     ax_h.tick_params(axis="y", length=0)
     cb = fig.colorbar(mesh, cax=ax_c)
     cb.outline.set_visible(False)
     cb.ax.tick_params(colors=MUTED, labelcolor=INK_2, labelsize=8)
     cb.set_label("distance from normal (mean |z|)", color=INK_2, fontsize=8.5)
-    fig.text(0.125, 0.985, "How stirred up each part of the fly circuit is", fontsize=11, fontweight="bold",
-             color=INK, va="top")
-    fig.text(0.125, 0.955, "Average distance of each group's neurons from their own normal activity. "
+    fig.text(0.125, 0.985, title, fontsize=11, fontweight="bold", color=INK, va="top")
+    who = "moving neurons" if share is not None else "neurons"
+    fig.text(0.125, 0.955, f"Average distance of each group's {who} from their own normal activity. "
              "Darker = more stirred up. Shaded = big drawdowns.", fontsize=8.5, color=INK_2, va="top")
     return _save(fig, path)
 
 
-def animate_brain(glow: pd.DataFrame, xy: np.ndarray, input_idx, close: pd.Series, background_xy: np.ndarray,
-                  window: tuple, title: str, path, ticker: str = "SPY", fps: int = 6, vmin: float = 0.7,
-                  vmax: float = 1.9, colors: int = 96):
-    """Animated frontal view of the circuit, one frame per week: brighter = further from normal activity.
+def _brain_panel(ax, background_xy: np.ndarray):
+    """Dark axes with the brain's outline (density of all ~140k somata) drawn once."""
+    from matplotlib.colors import LinearSegmentedColormap
 
-    glow: weekly mean |z|, rows = weeks, columns = neurons. xy: (n, 2) soma positions (NaN = unknown).
-    Input neurons have their cell bodies outside the brain, so they get their own grid on the side.
-    """
-    from matplotlib.colors import LinearSegmentedColormap, Normalize
-    from PIL import Image
-
-    cmap = LinearSegmentedColormap.from_list("glow", GLOW)
-    norm = Normalize(vmin, vmax)  # a normal week (|z| around 0.8) stays dim, crash weeks glow
-    frames = glow.loc[window[0]:window[1]]
-    price = close.loc[pd.Timestamp(window[0]) - pd.Timedelta(days=7):window[1]]
-    peak = close.loc[:window[1]].cummax()
-
-    inputs = np.asarray(input_idx)
-    placed = np.flatnonzero(np.isfinite(xy[:, 0]) & ~np.isin(np.arange(len(xy)), inputs))
-
-    fig = plt.figure(figsize=(9.6, 6.0), dpi=100, facecolor=D_SURFACE)
-    ax_b = fig.add_axes([0.01, 0.02, 0.62, 0.84])
-    ax_i = fig.add_axes([0.68, 0.45, 0.28, 0.30])
-    ax_p = fig.add_axes([0.68, 0.10, 0.28, 0.24])
-    for ax in (ax_b, ax_i, ax_p):
-        ax.set_facecolor(D_SURFACE)
-
-    # brain outline: density of all ~140k somata, drawn once
+    ax.set_facecolor(D_SURFACE)
     H, xe, ye = np.histogram2d(background_xy[:, 0], background_xy[:, 1], bins=(260, 190))
     outline = LinearSegmentedColormap.from_list("outline", [D_SURFACE, "#4a4a45"])
-    ax_b.imshow(np.log1p(H.T), extent=(xe[0], xe[-1], ye[-1], ye[0]), cmap=outline, interpolation="bilinear",
-                aspect="equal")
-    first = frames.iloc[0].to_numpy()
-    sc = ax_b.scatter(xy[placed, 0], xy[placed, 1], s=7, c=first[placed], cmap=cmap, norm=norm, linewidths=0)
-    ax_b.set_xlim(xe[0], xe[-1])
-    ax_b.set_ylim(ye[-1], ye[0])
-    ax_b.axis("off")
+    ax.imshow(np.log1p(H.T), extent=(xe[0], xe[-1], ye[-1], ye[0]), cmap=outline, interpolation="bilinear",
+              aspect="equal")
+    ax.set_xlim(xe[0], xe[-1])
+    ax.set_ylim(ye[-1], ye[0])
+    ax.axis("off")
 
-    k = len(inputs)
-    side = int(np.ceil(np.sqrt(k)))
-    gx, gy = np.meshgrid(np.arange(side), np.arange(side))
-    gx, gy = gx.ravel()[:k], gy.ravel()[:k]
-    sci = ax_i.scatter(gx, gy, s=34, c=first[inputs], cmap=cmap, norm=norm, linewidths=0)
-    ax_i.set_xlim(-1, side)
-    ax_i.set_ylim(side, -1)
-    ax_i.axis("off")
-    ax_i.set_title("input neurons (sense organs, outside the brain)", loc="left", fontsize=8.5, color=D_INK_2)
 
-    ax_p.plot(price.index, price.values, color=D_INK_2, linewidth=1.3, **LINE)
-    marker, = ax_p.plot([], [], "o", color=D_INK, markersize=6, markeredgecolor=D_SURFACE, markeredgewidth=2)
-    vline = ax_p.axvline(price.index[0], color=D_AXIS, linewidth=0.8)
+def _placed(xy: np.ndarray, input_idx, moving) -> np.ndarray:
+    """Neurons drawn in the brain: known soma, not an input neuron, and moving (if a mask is given)."""
+    shown = np.ones(len(xy), dtype=bool) if moving is None else np.asarray(moving, dtype=bool)
+    return np.flatnonzero(np.isfinite(xy[:, 0]) & ~np.isin(np.arange(len(xy)), np.asarray(input_idx)) & shown)
+
+
+def _dot_size(n: int, scale: float = 1.0) -> float:
+    return scale * (7.0 if n <= 8000 else max(0.8, 7.0 * np.sqrt(8000 / n)))  # dense brains: finer dots
+
+
+def _price_panel(ax, price: pd.Series, ticker: str):
+    """Dark price strip; returns the moving marker and the vertical line."""
+    ax.set_facecolor(D_SURFACE)
+    ax.plot(price.index, price.values, color=D_INK_2, linewidth=1.3, **LINE)
+    marker, = ax.plot([], [], "o", color=D_INK, markersize=6, markeredgecolor=D_SURFACE, markeredgewidth=2)
+    vline = ax.axvline(price.index[0], color=D_AXIS, linewidth=0.8)
     for s in ("top", "right"):
-        ax_p.spines[s].set_visible(False)
+        ax.spines[s].set_visible(False)
     for s in ("left", "bottom"):
-        ax_p.spines[s].set_color(D_AXIS)
-    ax_p.tick_params(colors="#898781", labelcolor=D_INK_2, labelsize=7.5)
-    ax_p.xaxis.set_major_locator(mticker.MaxNLocator(4))
-    ax_p.xaxis.set_major_formatter(mdates.DateFormatter("%b %y"))
-    ax_p.set_title(ticker, loc="left", fontsize=8.5, color=D_INK_2)
+        ax.spines[s].set_color(D_AXIS)
+    ax.tick_params(colors="#898781", labelcolor=D_INK_2, labelsize=7.5)
+    ax.xaxis.set_major_locator(mticker.MaxNLocator(4))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %y"))
+    ax.set_title(ticker, loc="left", fontsize=8.5, color=D_INK_2)
+    return marker, vline
 
-    fig.text(0.02, 0.955, title, fontsize=13, fontweight="bold", color=D_INK)
-    fig.text(0.02, 0.915, f"{glow.shape[1]:,} neurons of the male CNS connectome driven by {ticker} returns and "
-             "volatility. Brighter = further from the neuron's normal activity.", fontsize=8.5, color=D_INK_2)
-    date_txt = fig.text(0.68, 0.84, "", fontsize=15, fontweight="bold", color=D_INK)
-    dd_txt = fig.text(0.68, 0.80, "", fontsize=9.5, color=D_INK_2)
 
-    cax = fig.add_axes([0.03, 0.085, 0.2, 0.016])
+def _glow_colorbar(fig, sc, rect):
+    cax = fig.add_axes(rect)
     cb = fig.colorbar(sc, cax=cax, orientation="horizontal")
     cb.outline.set_visible(False)
     cb.ax.tick_params(colors="#898781", labelcolor=D_INK_2, labelsize=7)
     cb.set_label("distance from normal (weekly mean |z|)", color=D_INK_2, fontsize=7.5)
 
-    def update(i):
-        week = frames.index[i]
-        vals = frames.iloc[i].to_numpy()
-        sc.set_array(vals[placed])
-        sci.set_array(vals[inputs])
-        p = close.loc[:week].iloc[-1]
-        marker.set_data([week], [p])
-        vline.set_xdata([week, week])
-        date_txt.set_text(f"{week:%d %b %Y}")
-        dd_txt.set_text(f"{ticker} {p / peak.loc[:week].iloc[-1] - 1:+.0%} from its peak")
-        return sc, sci, marker, vline, date_txt, dd_txt
+
+def _write_gif(fig, n_frames: int, update, path, fps: int, colors: int):
+    """Draw each frame, grab the pixels (works with any Agg-based backend) and save one GIF."""
+    from PIL import Image
 
     images = []
-    for i in range(len(frames)):  # draw each frame and grab the pixels (works with any Agg-based backend)
+    for i in range(n_frames):
         update(i)
         fig.canvas.draw()
         images.append(Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()))
@@ -334,6 +314,127 @@ def animate_brain(glow: pd.DataFrame, xy: np.ndarray, input_idx, close: pd.Serie
     frames_p[0].save(path, save_all=True, append_images=frames_p[1:], duration=int(1000 / fps), loop=0,
                      optimize=True)
     return path
+
+
+def _week_text(close: pd.Series, peak: pd.Series, week, ticker: str):
+    p = close.loc[:week].iloc[-1]
+    return p, f"{week:%d %b %Y}", f"{ticker} {p / peak.loc[:week].iloc[-1] - 1:+.0%} from its peak"
+
+
+def animate_brain(glow: pd.DataFrame, xy: np.ndarray, input_idx, close: pd.Series, background_xy: np.ndarray,
+                  window: tuple, title: str, path, ticker: str = "SPY", fps: int = 6, vmin: float = 0.7,
+                  vmax: float = 1.9, colors: int = 96, moving: np.ndarray | None = None,
+                  subtitle: str | None = None):
+    """Animated frontal view of the circuit, one frame per week: brighter = further from normal activity.
+
+    glow: weekly mean |z|, rows = weeks, columns = neurons. xy: (n, 2) soma positions (NaN = unknown).
+    Input neurons have their cell bodies outside the brain, so they get their own grid on the side.
+    moving: bool per neuron; neurons that barely move aren't drawn, so that part of the brain stays dark.
+    """
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+
+    cmap = LinearSegmentedColormap.from_list("glow", GLOW)
+    norm = Normalize(vmin, vmax)  # a normal week (|z| around 0.8) stays dim, crash weeks glow
+    frames = glow.loc[window[0]:window[1]]
+    price = close.loc[pd.Timestamp(window[0]) - pd.Timedelta(days=7):window[1]]
+    peak = close.loc[:window[1]].cummax()
+    inputs = np.asarray(input_idx)
+    placed = _placed(xy, inputs, moving)
+
+    fig = plt.figure(figsize=(9.6, 6.0), dpi=100, facecolor=D_SURFACE)
+    ax_b = fig.add_axes([0.01, 0.02, 0.62, 0.84])
+    ax_i = fig.add_axes([0.68, 0.45, 0.28, 0.30])
+    ax_p = fig.add_axes([0.68, 0.10, 0.28, 0.24])
+    _brain_panel(ax_b, background_xy)
+    first = frames.iloc[0].to_numpy()
+    sc = ax_b.scatter(xy[placed, 0], xy[placed, 1], s=_dot_size(len(placed)), c=first[placed], cmap=cmap, norm=norm,
+                      linewidths=0)
+
+    ax_i.set_facecolor(D_SURFACE)
+    k = len(inputs)
+    side = int(np.ceil(np.sqrt(k)))
+    gx, gy = np.meshgrid(np.arange(side), np.arange(side))
+    gx, gy = gx.ravel()[:k], gy.ravel()[:k]
+    sci = ax_i.scatter(gx, gy, s=34, c=first[inputs], cmap=cmap, norm=norm, linewidths=0)
+    ax_i.set_xlim(-1, side)
+    ax_i.set_ylim(side, -1)
+    ax_i.axis("off")
+    ax_i.set_title("input neurons (sense organs, outside the brain)", loc="left", fontsize=8.5, color=D_INK_2)
+    marker, vline = _price_panel(ax_p, price, ticker)
+
+    fig.text(0.02, 0.975, title, fontsize=13, fontweight="bold", color=D_INK, va="top")
+    if subtitle is None:
+        subtitle = (f"{glow.shape[1]:,} neurons of the male CNS connectome driven by {ticker} returns and volatility. "
+                    "Brighter = further from the neuron's normal activity.")
+    fig.text(0.02, 0.93, subtitle, fontsize=8.5, color=D_INK_2, va="top", linespacing=1.4)
+    date_txt = fig.text(0.68, 0.84, "", fontsize=15, fontweight="bold", color=D_INK)
+    dd_txt = fig.text(0.68, 0.80, "", fontsize=9.5, color=D_INK_2)
+    _glow_colorbar(fig, sc, [0.03, 0.085, 0.2, 0.016])
+
+    def update(i):
+        week = frames.index[i]
+        vals = frames.iloc[i].to_numpy()
+        sc.set_array(vals[placed])
+        sci.set_array(vals[inputs])
+        p, date, dd = _week_text(close, peak, week, ticker)
+        marker.set_data([week], [p])
+        vline.set_xdata([week, week])
+        date_txt.set_text(date)
+        dd_txt.set_text(dd)
+
+    return _write_gif(fig, len(frames), update, path, fps, colors)
+
+
+def animate_brain_pair(glows: list, xy: np.ndarray, input_idx, close: pd.Series, background_xy: np.ndarray,
+                       window: tuple, title: str, path, labels: list, movings: list, subtitle: str | None = None,
+                       ticker: str = "SPY", fps: int = 6, vmin: float = 0.7, vmax: float = 1.9, colors: int = 48):
+    """Two brains side by side, same weeks, one price strip: e.g. the fly's wiring next to a random rewiring.
+
+    glows: two weekly mean |z| frames (weeks x neurons) over the same neurons. labels: a (name, detail)
+    pair per brain, shown above it. movings: bool mask per brain; only moving neurons are drawn.
+    Input neurons (no soma in the CNS) aren't shown here.
+    """
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+
+    cmap = LinearSegmentedColormap.from_list("glow", GLOW)
+    norm = Normalize(vmin, vmax)
+    frames = [g.loc[window[0]:window[1]] for g in glows]
+    weeks = frames[0].index.intersection(frames[1].index)
+    frames = [f.loc[weeks] for f in frames]
+    price = close.loc[pd.Timestamp(window[0]) - pd.Timedelta(days=7):window[1]]
+    peak = close.loc[:window[1]].cummax()
+
+    fig = plt.figure(figsize=(9.6, 6.2), dpi=100, facecolor=D_SURFACE)
+    scs, placed = [], [_placed(xy, input_idx, m) for m in movings]
+    size = _dot_size(max(len(idx) for idx in placed), 0.8)  # same dots on both sides, so density compares
+    for j, (f, idx, (name, detail)) in enumerate(zip(frames, placed, labels)):
+        ax = fig.add_axes([0.01 + 0.5 * j, 0.225, 0.48, 0.55])
+        _brain_panel(ax, background_xy)
+        scs.append(ax.scatter(xy[idx, 0], xy[idx, 1], s=size, c=f.iloc[0].to_numpy()[idx], cmap=cmap, norm=norm,
+                              linewidths=0))
+        fig.text(0.02 + 0.5 * j, 0.815, name, fontsize=11, fontweight="bold", color=D_INK, va="bottom")
+        fig.text(0.02 + 0.5 * j, 0.80, detail, fontsize=8.5, color=D_INK_2, va="top")
+
+    ax_p = fig.add_axes([0.40, 0.065, 0.56, 0.13])
+    marker, vline = _price_panel(ax_p, price, ticker)
+    fig.text(0.02, 0.975, title, fontsize=13, fontweight="bold", color=D_INK, va="top")
+    if subtitle:
+        fig.text(0.02, 0.93, subtitle, fontsize=8.5, color=D_INK_2, va="top", linespacing=1.4)
+    date_txt = fig.text(0.03, 0.155, "", fontsize=15, fontweight="bold", color=D_INK)
+    dd_txt = fig.text(0.03, 0.115, "", fontsize=9.5, color=D_INK_2)
+    _glow_colorbar(fig, scs[0], [0.03, 0.06, 0.2, 0.016])
+
+    def update(i):
+        week = weeks[i]
+        for sc, f, idx in zip(scs, frames, placed):
+            sc.set_array(f.iloc[i].to_numpy()[idx])
+        p, date, dd = _week_text(close, peak, week, ticker)
+        marker.set_data([week], [p])
+        vline.set_xdata([week, week])
+        date_txt.set_text(date)
+        dd_txt.set_text(dd)
+
+    return _write_gif(fig, len(weeks), update, path, fps, colors)
 
 
 def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", noise: float | None = None,
