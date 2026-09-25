@@ -31,8 +31,8 @@ number below from the result folders.
 **Short version:** the fly brain is no better at markets than random wiring, and as a memory it's
 worse. Its wiring is a set of dense knots, one inside almost every brain region, and a reservoir
 can't drive them all at once. With one global gain, tuning brings the fly level with the controls in
-a small circuit but leaves it 8–11× behind across the whole brain. Giving every region its own gain
-helps random wiring far more than the fly. On volatility, where there is something to forecast, every
+a small circuit but leaves it 8–11× behind across the whole brain. Giving every region, or every
+neuron, its own gain helps random wiring far more than the fly. On volatility, where there is something to forecast, every
 reservoir beats the standard HAR benchmark by about 17% at a 5-day horizon, but a linear model with
 the same inputs already gets 15% of that, and the wiring moves the result by about 1%.
 
@@ -161,10 +161,51 @@ from the sweep table.)
   <img src="docs/img/region_gains_small.png" width="900" alt="Memory with one gain versus one gain per brain region in the 3,000-neuron circuit, and the factor the search chose for each region">
 </p>
 
+**Each neuron its own gain (`scripts/homeostasis.py`).** Real neurons don't wait for a search:
+synaptic scaling multiplies all of a neuron's incoming synapses up when it's too quiet and down when
+it's too busy. The model gets the same rule. Drive the reservoir with white noise, measure how big
+each neuron's recurrent input is, move its gain halfway toward a target, and repeat for 30 rounds.
+Knots get turned down and silent stretches of the brain turned up, with no knowledge of anatomy.
+Four targets; each wiring keeps its best valid one, judged on fresh inputs as before.
+
+<p align="center">
+  <img src="docs/img/homeostasis_full.png" width="900" alt="Memory with the best single gain versus homeostatic per-neuron gains for the connectome and four control wirings across the whole CNS, and the mean gain the rule gave each region">
+</p>
+
+| memory with readout noise, fresh inputs | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
+|---|---|---|---|---|---|
+| 3,000 neurons, best single gain | 6.8 | 6.9 | 7.4 | 5.9 | 7.2 |
+| 3,000 neurons, homeostatic | 15.3 (1 of 3 seeds valid) | 17.3 | 17.9 | 13.1 (2 of 3) | 15.5 |
+| whole CNS, best single gain | 3.4 | 22.9 | 3.3 | 4.7 | 30.9 |
+| whole CNS, homeostatic | **5.4** (2 of 3) | 55.2 | latches (0 of 3) | 9.6 | 39.5 |
+
+(Mean over 3 seeds. In brackets: how many seeds end up valid on fresh inputs, when not all of them do.)
+
+- **Per-neuron gains don't rescue the fly either.** Across the whole brain it goes from 3.4 to 5.4,
+  while the degree-preserving shuffle goes from 23 to 55: the gap widens to about 10×.
+- **The fly mostly latches.** Of its 12 tries (4 targets × 3 seeds), the fly ends up valid once in
+  the small circuit and twice in the whole brain; the degree-preserving shuffle 9 times at both
+  scales. When the fly latches, 80–90% of the circuit locks up at once (checked on the small
+  circuit), so it's a global state, not one knot.
+- **Topology again, at brain scale.** In the small circuit the weight shuffle (the fly's connections,
+  synapse counts shuffled) does fine, which suggested the fly's actual synapse counts were the
+  problem. The whole brain doesn't back that up: there the weight shuffle never ends up valid (0 of
+  12 tries) and the sign shuffle gains little (4.7 to 9.6). The three wirings with the fly's
+  connections struggle; the two that scramble them don't.
+- **Caveats.** The rule doesn't always settle. In these mostly excitatory networks a neuron's input
+  can have no level near the target: a bit more gain tips its neighborhood into a self-sustained
+  active state, a bit less drops it back. So after 30 rounds usually only a minority of neurons are
+  within ×2 of the target; at the highest target it does settle, and then almost everything latches
+  (1 valid of 30 tries). Two other rules collapsed first (documented in `homeostasis.py`). Validity
+  this close to the edge is also fragile: the same small-circuit run gave the fly 0 valid tries on
+  one machine and 1 on another. Erdős–Rényi's whole-brain number varies a lot between seeds
+  (39.5 ± 37.6).
+
 So the honest answer: biological wiring isn't a better reservoir, and at brain scale it's a clearly
 worse one. The fly brain is **a set of dense knots, one inside almost every region, and a reservoir
-can't drive them all at once**, whether it gets one global gain or one per region. The only place
-the fly keeps up is a small circuit with one global gain, and per-region gains take that away too.
+can't drive them all at once**, whether it gets one global gain, one per region or one per neuron.
+The only place the fly keeps up is a small circuit with one global gain, and finer gains take that
+away too.
 
 ### Volatility: a question with an answer
 
@@ -368,7 +409,8 @@ python scripts/run_experiment.py --config configs/small.yaml --set reservoir.nor
 - Subgraph size is just `subgraph.n_neurons`; everything is sparse, so 3k to 50k is a config change.
 - `configs/full.yaml` runs the whole CNS (`method: all`) with 4 parallel jobs. Meant for a
   desktop (32 GB RAM is plenty). With the GPU backend on an RX 7900 XTX the experiment takes about
-  12 minutes, the gain sweep about 6 and the per-region search about 35; CPU-only is slower.
+  12 minutes, the gain sweep about 6, the per-region search about 35 and the homeostatic rule about
+  20; CPU-only is slower.
 
 ### GPU (AMD on Linux)
 
@@ -422,7 +464,7 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
    own best valid gain. Two alternatives were tried and rejected: matching total synaptic strength
    (`normalize: frobenius`) pushes the fly's cores past 1 so they latch, and per-neuron input
    normalization hands the gain to tiny two-neuron loops. `region_gains.py` then gives every brain
-   region its own gain on top.
+   region its own gain on top, and `homeostasis.py` every neuron.
 5. **Edges need ≥ 5 synapses.** Standard threshold to drop noisy connections (`connectome.min_weight`).
 6. **Inputs = the most-connected sensory neurons**, and the subgraph is grown from them by
    repeatedly adding the neurons most strongly connected to it, so the signal can actually
@@ -445,10 +487,10 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - The hot spots depend on the neurotransmitter labels, which are mostly *predictions* from the
   dataset. The antennal-lobe core is labeled mostly excitatory; if more of it is actually
   inhibitory, it is less explosive than modeled here.
-- Gains are global or per brain region, and one gain per region is still coarse: real neurons tune
-  their own excitability (neuromodulation, homeostatic plasticity), and the fly's knots sit inside
-  regions. Per-cell-type or per-neuron gains could still change the picture. The region search is a
-  local coordinate search over 3 seeds, not a global optimum.
+- Gains are tried globally, per brain region and per neuron. The region search is a local
+  coordinate search and the per-neuron rule doesn't always settle, both over 3 seeds, so neither is
+  a global optimum. Real brains also tune excitability with neuromodulators that depend on what the
+  animal is doing, which nothing here models.
 - The readout noise level (0.1% of a neuron's range) is a judgment call. It changes the small-circuit
   verdict at best gains (fly's connections slightly ahead noise-free, a tie with noise), not the
   whole-brain one.
