@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from flyres import plotting  # noqa: E402
-from flyres.config import load_config, save_config  # noqa: E402
+from flyres.config import load_config, run_label, save_config  # noqa: E402
 from flyres.regions import region_markdown, run_region_search  # noqa: E402
 from flyres.sweep import DEFAULT_GAINS  # noqa: E402
 
@@ -59,7 +59,7 @@ def main():
         save_config(cfg, out / "config_used.yaml")
     (out / "summary.md").write_text(region_markdown(cfg, results, regions), encoding="utf-8")
     plt.close(plotting.plot_region_gains(results, regions, noise=cfg.memory.readout_noise,
-                                         path=out / "region_gains.png"))
+                                         path=out / "region_gains.png", title=f"Per-region gains, {run_label(cfg)}"))
     col = "memory_noisy" if "memory_noisy_single" in results.columns else "memory"
     table = results.groupby("wiring", sort=False)[[f"{col}_single", f"{col}_regions"]].mean().round(1)
     print(table.to_string())

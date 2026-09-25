@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from flyres import plotting  # noqa: E402
-from flyres.config import load_config, save_config  # noqa: E402
+from flyres.config import load_config, run_label, save_config  # noqa: E402
 from flyres.sweep import DEFAULT_GAINS, best_valid, run_gain_sweep, summarize_sweep, sweep_markdown  # noqa: E402
 
 # joblib restarts a worker whose memory grew a lot between jobs; harmless, results aren't lost.
@@ -51,9 +51,8 @@ def main():
     save_config(cfg, out / "config_used.yaml")
     (out / "summary.md").write_text(sweep_markdown(cfg, summary, best), encoding="utf-8")
     label = "spectral radius" if cfg.reservoir.normalize == "spectral" else "bulk scale (frobenius)"
-    title = "Memory capacity at each gain" + (", FlyWire (female brain)" if cfg.connectome.source == "flywire" else "")
     plt.close(plotting.plot_gain_sweep(summary, label, noise=cfg.memory.readout_noise, path=out / "gain_sweep.png",
-                                       title=title))
+                                       title=f"Memory capacity at each gain, {run_label(cfg)}"))
     print(best.to_string(index=False))
     print(f"open {out / 'summary.md'}")
 

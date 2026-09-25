@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from flyres import plotting  # noqa: E402
-from flyres.config import load_config, save_config  # noqa: E402
+from flyres.config import load_config, run_label, save_config  # noqa: E402
 from flyres.homeostasis import TARGETS, homeostasis_markdown, run_homeostasis  # noqa: E402
 from flyres.sweep import DEFAULT_GAINS  # noqa: E402
 
@@ -58,7 +58,7 @@ def main():
     (out / "summary.md").write_text(homeostasis_markdown(cfg, results, regions, trials), encoding="utf-8")
     plt.close(plotting.plot_region_gains(
         results, regions, noise=cfg.memory.readout_noise, path=out / "homeostasis.png", after="homeostatic",
-        after_label="homeostatic gains", title="Homeostatic gains",
+        after_label="homeostatic gains", title=f"Homeostatic gains, {run_label(cfg)}",
         heat_title="Mean gain of each region's neurons after the rule (neurons)",
         subtitle="Hollow = each wiring's best single gain. Filled = after every neuron scales its inputs toward the "
                  "same input level; red = region turned up, blue = down. Mean over seeds, small dots = seeds."))

@@ -160,3 +160,12 @@ def load_config(path: str | Path | None = None, overrides: list[str] | None = No
 
 def save_config(cfg: ExperimentConfig, path: str | Path) -> None:
     Path(path).write_text(yaml.safe_dump(cfg.to_dict(), sort_keys=False), encoding="utf-8")
+
+
+def run_label(cfg: ExperimentConfig) -> str:
+    """Which brain a run uses, for figure titles: 'whole male CNS', '3,000-neuron circuit, FlyWire (female)'."""
+    src = cfg.connectome.source
+    if cfg.subgraph.method == "all":
+        return {"malecns": "whole male CNS", "flywire": "whole FlyWire brain (female)"}.get(src, f"whole {src} graph")
+    brain = {"malecns": "male CNS", "flywire": "FlyWire (female)"}.get(src, f"{src} graph")
+    return f"{cfg.subgraph.n_neurons:,}-neuron circuit, {brain}"

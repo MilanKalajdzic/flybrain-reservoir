@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from flyres import plotting  # noqa: E402
-from flyres.config import load_config, save_config  # noqa: E402
+from flyres.config import load_config, run_label, save_config  # noqa: E402
 from flyres.robustness import (VARIANTS, fly_gap, robustness_markdown, run_robustness,  # noqa: E402
                                summarize_robustness)
 from flyres.sweep import DEFAULT_GAINS  # noqa: E402
@@ -55,7 +55,8 @@ def main():
     best.to_csv(out / "best.csv", index=False)
     (out / "summary.md").write_text(robustness_markdown(cfg, best), encoding="utf-8")
     labels = {v: label for v, (label, _) in VARIANTS.items()}
-    plt.close(plotting.plot_robustness(best, labels, noise=cfg.memory.readout_noise, path=out / "robustness.png"))
+    plt.close(plotting.plot_robustness(best, labels, noise=cfg.memory.readout_noise, path=out / "robustness.png",
+                                       title=f"Does the fly still lose when the setup changes? ({run_label(cfg)})"))
     metric = "memory_noisy" if "memory_noisy" in best.columns else "memory"
     print(best.pivot(index="variant", columns="wiring", values=metric).round(1).to_string())
     print(fly_gap(best, metric).round(2).to_string(index=False))

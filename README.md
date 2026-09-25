@@ -67,8 +67,9 @@ folders; each script's `summary.md` has the rest.
 
 *Every memory result in one chart: blue is the fly's wiring, gray the better of the two random
 rewirings, on a log scale, so the length of each bar is how many times more one remembers than the
-other (`scripts/scoreboard.py`). Per-neuron gains are the mean over seeds, including ones where the
-fly latches.*
+other (`scripts/scoreboard.py`). Circles are the male CNS, diamonds FlyWire, which got the gain sweep
+at both scales and the robustness checks in the small circuit. Per-neuron gains are the mean over
+seeds, including ones where the fly latches.*
 
 ### Markets: no edge
 
@@ -598,7 +599,9 @@ from 0.5 to 20). `region_gains.py` writes `results/small/region_gains/`; add `--
 more cores. `vol_forecast.py` writes `results/small/volatility/` (run it after `run_experiment.py`
 so it can relate each reservoir's memory to its forecasts); `--best-gains` runs every wiring at its
 best gain from the gain sweep instead, into `results/small/volatility_best_gain/`. `robustness.py`
-writes `results/small/robustness/`; `--variants` picks which checks to run.
+writes `results/small/robustness/`; `--variants` picks which checks to run. `gain_sweep.py`,
+`region_gains.py`, `homeostasis.py`, `narma.py` and `robustness.py` also take `--replot`, which
+redraws the summary and figure from the saved CSVs without running anything.
 `notebooks/01_connectome_tour.ipynb` explores the graph and its eigenvalue spectrum,
 `notebooks/02_results.ipynb` runs and plots an experiment.
 

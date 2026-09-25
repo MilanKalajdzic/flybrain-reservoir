@@ -53,8 +53,13 @@ def test_scoreboard_picks_the_better_scrambled_wiring(tmp_path):
                         ("FlyWire", "whole brain"): tmp_path / "flywire_full"})
     assert len(table) == 5 + 2 and (table["random_wiring"] == "erdos_renyi").all()
     np.testing.assert_allclose(table["ratio"], 10.0)  # never the weight or sign shuffle, which keep the fly's edges
-    plt.close(plotting.plot_scoreboard(table, SETUPS, path=tmp_path / "board.png"))
+    fig = plotting.plot_scoreboard(table, SETUPS, path=tmp_path / "board.png")
     assert (tmp_path / "board.png").stat().st_size > 0
+    # every colour-shape pair in the legend, and a note for the setups FlyWire wasn't run in
+    assert [t.get_text() for t in fig.axes[-1].get_legend().get_texts()] == [
+        "the fly, male CNS", "the fly, FlyWire", "best random rewiring, male CNS", "best random rewiring, FlyWire",
+        "no diamond = not run on FlyWire"]
+    plt.close(fig)
 
 
 def test_scoreboard_script(tmp_path):

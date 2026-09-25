@@ -449,7 +449,7 @@ def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", 
     axes = np.atleast_1d(axes)
     lo, hi = summary["gain"].min(), summary["gain"].max()
     labelled = [g for g in (0.25, 0.5, 1, 2, 3, 6, 12, 20, 30, 50, 100) if lo <= g <= hi]
-    for ax, (col, title) in zip(axes, panels):
+    for ax, (col, panel_title) in zip(axes, panels):
         for w in [w for w in WIRINGS if w in set(summary["wiring"])]:
             g = summary[summary["wiring"] == w].sort_values("gain")
             color = WIRING_COLORS[w]
@@ -465,7 +465,7 @@ def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", 
         ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
         ax.xaxis.set_minor_locator(mticker.NullLocator())
         ax.set_xlabel(gain_label)
-        ax.set_title(title, loc="left", fontsize=9.5, color=INK_2)
+        ax.set_title(panel_title, loc="left", fontsize=9.5, color=INK_2)
     axes[0].set_ylim(bottom=0)
     axes[0].set_ylabel("memory capacity")
     fig.suptitle(title, x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.04)
@@ -578,7 +578,7 @@ def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: 
         ax_h.spines[side].set_visible(False)
     cb = fig.colorbar(mesh, cax=ax_c)
     cb.outline.set_visible(False)
-    ticks = [v for v in range(-6, 7, 2 if lim > 2 else 1) if -lim <= v <= lim]
+    ticks = [v for v in range(-6, 7, 2 if lim > 4 else 1) if -lim <= v <= lim]
     cb.set_ticks(ticks, labels=[f"×{2 ** v}" if v >= 0 else f"×1/{2 ** -v}" for v in ticks])
     cb.ax.tick_params(colors=MUTED, labelcolor=INK_2, labelsize=8)
 
@@ -707,7 +707,8 @@ def plot_vol_forecast(predictions: pd.DataFrame, ticker: str, horizon: int, wind
     return _save(fig, path)
 
 
-def plot_narma(grid: pd.DataFrame, baseline: float | None = None, noise: float | None = None, path=None):
+def plot_narma(grid: pd.DataFrame, baseline: float | None = None, noise: float | None = None, path=None,
+               title: str = "NARMA-10 error at each gain"):
     """NARMA-10 error against gain, one line per wiring (mean over seeds). Lower is better. With readout-noise
     results, two panels on the same y scale: with noise (left, the main score) and noise-free (right).
     Filled markers = valid reservoir, hollow = some readouts latch or go chaotic."""
@@ -717,7 +718,7 @@ def plot_narma(grid: pd.DataFrame, baseline: float | None = None, noise: float |
     fig, axes = _figure(len(panels), figsize=(4.6 * len(panels) + 1.8, 4.0), sharey=True)
     axes = np.atleast_1d(axes)
     lo, hi = grid["gain"].min(), grid["gain"].max()
-    for ax, (col, title) in zip(axes, panels):
+    for ax, (col, panel_title) in zip(axes, panels):
         for w in [w for w in WIRINGS if w in set(grid["wiring"])]:
             g = grid[grid["wiring"] == w].sort_values("gain")
             color, main = WIRING_COLORS[w], w == "connectome"
@@ -728,26 +729,26 @@ def plot_narma(grid: pd.DataFrame, baseline: float | None = None, noise: float |
             ax.scatter(g["gain"][~ok], g[col][~ok], s=40, facecolors=SURFACE, edgecolors=color, linewidths=1.6,
                        zorder=4)
         if baseline is not None and np.isfinite(baseline):
-            ax.axhline(baseline, color=INK_2, linewidth=1.2, linestyle="--", zorder=1)
-            ax.text(lo, baseline, " linear model, last 10 inputs", va="bottom", ha="left", fontsize=8.5, color=INK_2)
+            ax.axhline(baseline, color=INK_2, linewidth=1.2, linestyle="--", zorder=1,
+                       label="linear model,\nlast 10 inputs" if ax is axes[-1] else None)
         ax.set_xscale("log")
         ax.set_xticks([g for g in (0.25, 0.5, 1, 2, 3, 6, 12, 20, 30, 50) if lo <= g <= hi])
         ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
         ax.xaxis.set_minor_locator(mticker.NullLocator())
         ax.set_xlabel("spectral radius")
-        ax.set_title(title, loc="left", fontsize=9.5, color=INK_2)
+        ax.set_title(panel_title, loc="left", fontsize=9.5, color=INK_2)
     axes[0].set_ylabel("NRMSE (lower = better)")
     axes[0].set_ylim(bottom=0)
     _legend(axes[-1], loc="upper left", bbox_to_anchor=(1.02, 1.0))
     fig.tight_layout()
-    fig.suptitle("NARMA-10 error at each gain", x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK,
-                 y=1.08)
+    fig.suptitle(title, x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.08)
     fig.text(0.01, 1.01, "Mean over seeds. Hollow = invalid reservoir (some neurons latch or go chaotic).",
              ha="left", fontsize=8.5, color=INK_2)
     return _save(fig, path)
 
 
-def plot_robustness(best: pd.DataFrame, labels: dict, noise: float | None = None, path=None):
+def plot_robustness(best: pd.DataFrame, labels: dict, noise: float | None = None, path=None,
+                    title: str = "Does the fly still lose when the setup changes?"):
     """Each wiring's memory at its best valid gain, for each variant of the setup (groups left to right).
     best: rows per variant and wiring as from robustness.summarize_robustness. labels: variant -> label.
     Bars = sd over seeds; x = no valid gain for that wiring. Log scale when values span more than 20x."""
@@ -791,13 +792,15 @@ def plot_robustness(best: pd.DataFrame, labels: dict, noise: float | None = None
                   + (", log scale" if log else ""))
     _legend(ax, loc="upper left", bbox_to_anchor=(1.01, 1.0))
     fig.tight_layout()
-    fig.suptitle("Does the fly still lose when the setup changes?", x=0.01, ha="left", fontsize=11,
-                 fontweight="bold", color=INK, y=1.08)
+    fig.suptitle(title, x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.08)
     sub = "Each wiring at its own best valid gain; mean over seeds, bars = sd, x = no valid gain."
     if noise and metric == "memory_noisy":
-        sub = f"Memory with readout noise (std {noise:g}). " + sub
+        sub = f"Memory with readout noise ({noise:.1%} of max activity). " + sub
     fig.text(0.01, 1.01, sub, ha="left", fontsize=8.5, color=INK_2)
     return _save(fig, path)
+
+
+FLY_SIZE, RANDOM_SIZE = 64, 24  # scoreboard marker areas (pt^2)
 
 
 def plot_scoreboard(table: pd.DataFrame, setups: dict, path=None, scales=None, connectomes=None):
@@ -809,6 +812,7 @@ def plot_scoreboard(table: pd.DataFrame, setups: dict, path=None, scales=None, c
     connectomes = [x for x in (connectomes or dict.fromkeys(table["connectome"])) if x in set(table["connectome"])]
     rows = [s for s in setups if s in set(table["setup"])]
     markers = dict(zip(connectomes, ("o", "D", "s", "^")))
+    shapes = {"o": "circle", "D": "diamond", "s": "square", "^": "triangle"}
     offsets = dict(zip(connectomes, np.linspace(-0.17, 0.17, len(connectomes)) if len(connectomes) > 1 else [0.0]))
     fly_color = WIRING_COLORS["connectome"]
     fig, axes = _figure(len(scales), figsize=(4.3 * len(scales) + 2.2, 0.52 * len(rows) + 1.3), sharey=True,
@@ -826,10 +830,10 @@ def plot_scoreboard(table: pd.DataFrame, setups: dict, path=None, scales=None, c
                 y = i + offsets[c]
                 f, r = t.loc[setup, "fly"], t.loc[setup, "random"]
                 ax.plot([f, r], [y, y], color=GRID, linewidth=2.2, zorder=1, **LINE)
-                ax.scatter([f], [y], marker=markers[c], s=58, color=fly_color, edgecolors=SURFACE, linewidths=1.5,
-                           zorder=2)
-                # the random wiring on top and a bit smaller, so a tie still shows both
-                ax.scatter([r], [y], marker=markers[c], s=34, color=MUTED, edgecolors=SURFACE, linewidths=1.2, zorder=3)
+                ax.scatter([f], [y], marker=markers[c], s=FLY_SIZE, color=fly_color, edgecolors=SURFACE,
+                           linewidths=1.5, zorder=2)
+                # the random wiring on top and smaller, so a tie still shows a blue ring around the gray
+                ax.scatter([r], [y], marker=markers[c], s=RANDOM_SIZE, color=MUTED, linewidths=0, zorder=3)
         ax.set_xscale("log")
         ax.set_xlim(lo / 1.6, hi * 1.6)
         ax.xaxis.set_major_locator(mticker.FixedLocator([t for t in (0.2, 0.5, 1, 2, 5, 10, 20, 50, 100)
@@ -844,16 +848,24 @@ def plot_scoreboard(table: pd.DataFrame, setups: dict, path=None, scales=None, c
     axes[0].tick_params(axis="y", length=0)
     from matplotlib.lines import Line2D
 
-    handles = [Line2D([], [], marker="o", linestyle="", color=fly_color, markersize=7, label="the fly's wiring"),
-               Line2D([], [], marker="o", linestyle="", color=MUTED, markersize=7,
-                      label="best random rewiring\n(degree-preserving or\nErdős–Rényi)")]
-    handles += [Line2D([], [], marker=markers[c], linestyle="", color=INK_2, markersize=6, label=c)
-                for c in connectomes]
-    _legend(axes[-1], handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    def entry(marker, color, size, label):  # legend marker the same size as in the plot
+        return Line2D([], [], marker=marker, linestyle="", markersize=np.sqrt(size), color=color,
+                      markeredgewidth=0, label=label)
+
+    # every colour-shape pair spelled out: blue diamond = the fly in FlyWire, and so on
+    handles = [entry(markers[c], fly_color, FLY_SIZE, f"the fly, {c}") for c in connectomes]
+    handles += [entry(markers[c], MUTED, RANDOM_SIZE, f"best random rewiring, {c}") for c in connectomes]
+    shown = {c: set(zip(table.loc[table["connectome"] == c, "scale"], table.loc[table["connectome"] == c, "setup"]))
+             for c in connectomes}
+    everything = set().union(*shown.values())
+    handles += [Line2D([], [], linestyle="", label=f"no {shapes[markers[c]]} = not run on {c}")
+                for c in connectomes if len(connectomes) > 1 and shown[c] != everything]
+    _legend(axes[-1], handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1.0), handletextpad=0.4)
     fig.tight_layout()
     height = fig.get_size_inches()[1]  # place the titles a fixed distance above the plot, whatever its height
     fig.suptitle("The fly against random wiring, in every setup", x=0.01, ha="left", fontsize=11, fontweight="bold",
                  color=INK, y=1 + 0.38 / height)
-    fig.text(0.01, 1 + 0.06 / height, "Memory each reservoir can use (higher = better), 3 seeds each. Blue = the fly, "
-             "gray = the better of the two random rewirings.", ha="left", fontsize=8.5, color=INK_2)
+    fig.text(0.01, 1 + 0.06 / height, "Memory each reservoir can use (higher = better), mean of 3 seeds. "
+             "Best random rewiring = the better of degree-preserving and Erdős–Rényi.", ha="left", fontsize=8.5,
+             color=INK_2)
     return _save(fig, path)
