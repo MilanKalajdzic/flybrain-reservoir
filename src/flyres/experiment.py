@@ -333,9 +333,10 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
 
         lines += ["", "## Memory capacity (market-free benchmark)", "",
                   f"Sum over delays 1..{cfg.memory.max_delay} of R² for reconstructing past i.i.d. inputs. "
-                  + (f"*With readout noise* adds noise of std {noise:g} to every readout neuron ({noise:.1%} of its "
-                     "range) before fitting, so only memory that survives a little noise counts; the noise-free "
-                     "number is the standard benchmark but can come from fluctuations of a millionth." if noisy else ""),
+                  + (f"*With readout noise* adds noise of std {noise:g} to every readout neuron ({noise:.1%} "
+                     "of its maximum activity) before fitting, so only memory that survives a little noise counts; "
+                     "the noise-free number is the standard benchmark but can come from fluctuations of a millionth."
+                     if noisy else ""),
                   "",
                   "| wiring | memory (noise-free) | connectome minus this |"
                   + (" memory with readout noise | connectome minus this |" if noisy else ""),
@@ -365,7 +366,8 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
               "- Top mode spread: roughly how many of the network's neurons carry that eigenvalue. A tiny share (say "
               "a few hundred of 166,700) means a small dense hot spot sets the gain for the whole network "
               "(`scripts/hot_spots.py` shows where it is).",
-              "- Active readouts: share of readout neurons that move at all under white-noise input (mean over seeds).",
+              "- Active readouts: share of readout neurons whose state varies by more than 0.001 under white-noise "
+              "input (mean over seeds).",
               "- Unstable readouts: share whose state still depends on inputs from hundreds of steps ago (worst seed). "
               "Should be 0% for a valid reservoir."]
     if has_stab:

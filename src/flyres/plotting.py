@@ -750,30 +750,45 @@ def plot_narma(grid: pd.DataFrame, baseline: float | None = None, noise: float |
 def plot_robustness(best: pd.DataFrame, labels: dict, noise: float | None = None, path=None):
     """Each wiring's memory at its best valid gain, for each variant of the setup (groups left to right).
     best: rows per variant and wiring as from robustness.summarize_robustness. labels: variant -> label.
-    Bars = sd over seeds; x = no valid gain for that wiring."""
+    Bars = sd over seeds; x = no valid gain for that wiring. Log scale when values span more than 20x."""
     metric = "memory_noisy" if "memory_noisy" in best.columns else "memory"
     variants = [v for v in labels if v in set(best["variant"])]
     wirings = [w for w in WIRINGS if w in set(best["wiring"])]
+    values = best[metric].to_numpy(float)
+    pos = values[np.isfinite(values) & (values > 0)]
+    log = len(pos) > 0 and pos.max() / pos.min() > 20
+    floor = pos.min() / 2 if log else 0.0
     fig, ax = _figure(figsize=(7.6, 3.9))
     width = 0.72
     offsets = np.linspace(-width / 2, width / 2, len(wirings)) if len(wirings) > 1 else np.zeros(1)
     for j, w in enumerate(wirings):
         b = best[best["wiring"] == w].set_index("variant").reindex(variants)
         x = np.arange(len(variants)) + offsets[j]
-        y, sd = b[metric].to_numpy(float), b[f"{metric}_sd"].to_numpy(float)
+        y, sd = b[metric].to_numpy(float), np.nan_to_num(b[f"{metric}_sd"].to_numpy(float))
         ok = np.isfinite(y)
         main = w == "connectome"
-        ax.errorbar(x[ok], y[ok], yerr=np.nan_to_num(sd[ok]), fmt="none", ecolor=WIRING_COLORS[w], elinewidth=1.4,
+        lower = np.minimum(sd[ok], y[ok] - floor) if log else sd[ok]  # keep bars above the log floor
+        ax.errorbar(x[ok], y[ok], yerr=[lower, sd[ok]], fmt="none", ecolor=WIRING_COLORS[w], elinewidth=1.4,
                     capsize=0, zorder=2)
         ax.scatter(x[ok], y[ok], s=70 if main else 46, color=WIRING_COLORS[w], edgecolors=SURFACE, linewidths=2,
                    zorder=4 if main else 3, label=LABELS[w])
-        ax.scatter(x[~ok], np.zeros((~ok).sum()), marker="x", s=40, color=WIRING_COLORS[w], linewidths=1.6, zorder=3)
+        ax.scatter(x[~ok], np.full((~ok).sum(), floor * 1.15 if log else 0.0), marker="x", s=40,
+                   color=WIRING_COLORS[w], linewidths=1.6, zorder=3)
     ax.set_xticks(np.arange(len(variants)), [labels[v] for v in variants])
     ax.tick_params(axis="x", length=0)
     ax.grid(False, axis="x")
     ax.set_xlim(-0.6, len(variants) - 0.4)
-    ax.set_ylim(bottom=0)
-    ax.set_ylabel("memory capacity" + (" (readout noise)" if metric == "memory_noisy" else ""))
+    if log:
+        ax.set_yscale("log")
+        ax.set_ylim(bottom=floor)
+        ax.yaxis.set_major_locator(mticker.FixedLocator([t for t in (0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200)
+                                                         if floor <= t <= pos.max() * 2]))
+        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+        ax.yaxis.set_minor_locator(mticker.NullLocator())
+    else:
+        ax.set_ylim(bottom=0)
+    ax.set_ylabel("memory capacity" + (" (readout noise)" if metric == "memory_noisy" else "")
+                  + (", log scale" if log else ""))
     _legend(ax, loc="upper left", bbox_to_anchor=(1.01, 1.0))
     fig.tight_layout()
     fig.suptitle("Does the fly still lose when the setup changes?", x=0.01, ha="left", fontsize=11,

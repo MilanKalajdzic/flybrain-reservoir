@@ -37,17 +37,20 @@ folders; each script's `summary.md` has the rest.
 **Short version:** the fly brain is no better at markets than random wiring, and as a memory it's
 worse. Its wiring is a set of dense knots, one inside almost every brain region, and a reservoir
 can't drive them all at once. With one global gain, tuning brings the fly level with the controls in
-a small circuit but leaves it 8–11× behind across the whole brain. Per-region gains help random wiring
-far more than the fly; per-neuron gains help every wiring in the small circuit but mostly make the fly
-latch, and across the whole brain they widen the gap to about 10×. A second benchmark (NARMA-10)
-agrees. On volatility, where there is something to forecast, every reservoir beats the standard HAR
-benchmark by about 17% at a 5-day horizon, but a linear model with the same inputs already gets 15 of
-those 17 points, and the wiring moves the result by about 1 point.
+a small circuit but leaves it 8–11× behind across the whole brain. Per-region gains help random
+wiring far more than the fly; per-neuron gains help every wiring in the small circuit but mostly
+make the fly latch, and across the whole brain they widen the gap to about 10×. A second benchmark
+(NARMA-10) agrees, and so do the robustness checks: feeding the input into random neurons or slowing
+the neurons down leaves the fly far behind across the whole brain (though with slow neurons, the
+fly's connections come out ahead in the small circuit). On volatility, where there is something to
+forecast, every reservoir beats the standard HAR benchmark by about 17% at a 5-day horizon, but a
+linear model with the same inputs already gets 15 of those 17 points, and the wiring moves the
+result by about 1 point.
 
 **Markets: no edge at either scale, and the wiring doesn't matter.** Every reservoir has an IC around
 0.015 (t ≈ 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe
-of 0.46 to 0.54 against 0.62 for buy & hold. None of the connectome-vs-control differences is
-larger than the noise (the standard error of a 19-year Sharpe is about 0.23). The equity curve's
+of 0.42 to 0.50 against 0.59 for buy & hold. None of the connectome-vs-control differences is
+larger than the noise (the standard error of an 18½-year Sharpe is about 0.23). The equity curve's
 early lead over buy & hold comes entirely from sidestepping 2008.
 
 **Memory at the standard gain: the fly remembers the least.** Memory capacity counts how many past
@@ -218,8 +221,8 @@ do.)
 **A second benchmark: NARMA-10 (`scripts/narma.py`).** Memory capacity only asks a reservoir to
 replay its input. NARMA-10, the standard benchmark since Jaeger (2003), asks it to compute with it:
 the target includes the product of the current input and the one 9 steps back, so it needs memory
-*and* a nonlinearity. A linear model of the last 10 inputs gets an error of 0.60. Every wiring runs at
-every gain and is judged at its best valid one, with the same readout noise as memory capacity.
+*and* a nonlinearity. A linear model of the last 10 inputs gets an error of 0.60. Every wiring runs
+at every gain and is judged at its best valid one, with the same readout noise as memory capacity.
 
 <p align="center">
   <img src="docs/img/narma_full.png" width="900" alt="NARMA-10 error against gain for the connectome and four control wirings across the whole CNS, with and without readout noise">
@@ -243,8 +246,48 @@ every gain and is judged at its best valid one, with the same readout noise as m
   published echo state results), because the readout decodes the fly's millionth-sized
   fluctuations. The first version of this benchmark was scored that way and flattered the fly.
 
+**Robustness: moving the input, slowing the neurons (`scripts/robustness.py`).** Two obvious
+objections, each rerun as a full gain sweep. First, the market enters through the sensory neurons,
+and the fly's biggest knot sits right behind the smell sensors: maybe the fly only loses because the
+input lands on its worst spot. So the input goes into as many randomly chosen neurons instead.
+Second, every neuron here replaces its state each step (leak rate 1), while real neurons are slow.
+So leak rates 0.5 and 0.2, where each neuron keeps part of its previous state.
+
+<p align="center">
+  <img src="docs/img/robustness_full.png" width="820" alt="Memory with readout noise at each wiring's best valid gain across the whole CNS, for the standard setup, random input neurons and leak rates 0.5 and 0.2, on a log scale">
+</p>
+
+| best valid memory, readout noise | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
+|---|---|---|---|---|---|
+| whole CNS, standard | **2.9** | 22.8 | 2.9 | 3.1 | 30.8 |
+| whole CNS, random input neurons | **2.3** | 21.0 | 2.6 | 2.9 | 29.5 |
+| whole CNS, leak rate 0.5 | **0.8** | 4.2 | 0.7 | 1.3 | 2.0 |
+| whole CNS, leak rate 0.2 | **0.3** | 1.0 | 0.2 | 0.4 | 0.6 |
+| 3,000 neurons, standard | **6.7** | 6.8 | 7.4 | 4.1 | 7.2 |
+| 3,000 neurons, random input neurons | **3.6** | 6.3 | 3.9 | 6.1 | 7.2 |
+| 3,000 neurons, leak rate 0.5 | **4.9** | 3.0 | 5.1 | 2.1 | 3.4 |
+| 3,000 neurons, leak rate 0.2 | **3.2** | 1.3 | 3.5 | 0.9 | 1.6 |
+
+(3 seeds each. The standard rows are the gain sweep again.)
+
+- **Where the input enters isn't why the fly loses; if anything it helped.** Across the whole brain,
+  random input neurons change little (the fly 2.9 → 2.3, the two scrambled wirings 21 and 30) and the
+  gap grows to 13×. In the small circuit they cost the two wirings with the fly's connections and
+  real signs half their memory (6.7 → 3.6 and 7.4 → 3.9), while the scrambled wirings barely move:
+  the small-circuit tie depended on the input entering through the sensory neurons.
+- **Slow neurons remember less here, for every wiring.** A leaky neuron averages its recent inputs,
+  and white-noise inputs averaged together are hard to pull apart again, all the more with readout
+  noise. Across the whole brain every wiring ends up below 5 at leak 0.5 and around 1 or less at 0.2,
+  and the fly stays behind the best control (5× and 3×), so there's little left to compare.
+- **The one twist: slow neurons in the small circuit.** There the fly's connections with their real
+  signs (connectome and weight shuffle) lose the least and end up ahead of both scrambled wirings
+  (4.9 and 5.1 vs 3.0 and 3.4 at leak 0.5, 3.2 and 3.5 vs 1.3 and 1.6 at 0.2); shuffling the signs
+  puts the same connections last. It's the only setting in this project where the fly's wiring beats
+  random wiring on memory with readout noise, and it doesn't carry over to the whole brain.
+
 So: biological wiring isn't a better reservoir, and at brain scale it's a clearly worse one, whether
-it gets one global gain, one per region or one per neuron, and on both benchmarks.
+it gets one global gain, one per region or one per neuron, on both benchmarks, and with the input
+moved or the neurons slowed down.
 
 ### Volatility: a question with an answer
 
@@ -261,42 +304,45 @@ gap between a reservoir and *HAR + inputs* is what the wiring adds.
 
 | whole CNS: log MSE vs HAR (R², log) | next 5 days | next 22 days |
 |---|---|---|
-| connectome | −16.7% (0.533) | −5.0% (0.442) |
-| degree-preserving | −17.4% (0.537) | −6.3% (0.449) |
-| weight shuffle | −17.0% (0.535) | −5.2% (0.443) |
-| sign shuffle | −16.7% (0.533) | −5.2% (0.443) |
-| Erdős–Rényi | −16.9% (0.534) | −5.3% (0.443) |
-| HAR + inputs (linear) | −15.1% (0.524) | **−7.1% (0.454)** |
-| HAR | 0% (0.439) | 0% (0.412) |
-| EWMA | +1.3% (0.432) | −3.7% (0.434) |
+| connectome | −16.5% (0.535) | −4.8% (0.446) |
+| degree-preserving | −17.1% (0.539) | −6.0% (0.453) |
+| weight shuffle | −16.8% (0.537) | −4.9% (0.446) |
+| sign shuffle | −16.5% (0.536) | −4.9% (0.446) |
+| Erdős–Rényi | −16.7% (0.537) | −5.0% (0.447) |
+| HAR + inputs (linear) | −14.9% (0.527) | **−6.9% (0.458)** |
+| HAR | 0% (0.444) | 0% (0.418) |
+| EWMA | +1.4% (0.436) | −3.7% (0.439) |
 
 - **Volatility is forecastable, and the biggest gain is linear.** HAR explains 44% of the variation
   in next week's log variance. Adding the reservoir's five inputs (recent returns, 20-day volatility
   and the vol-spike ratio) in a plain linear model cuts the error by another 15%, the largest
   forecasting improvement in this project, and no reservoir is involved.
 - **The reservoir adds a little, at short horizons only.** Every wiring improves on HAR + inputs by
-  2–3% at 5 days (Diebold–Mariano p ≤ 0.013 for all five) and not at all at 22 days, where the
+  2–3% at 5 days (Diebold–Mariano p ≤ 0.014 for all five) and not at all at 22 days, where the
   linear model is best.
-- **The wiring barely matters.** The wirings are within 1.5% of each other, against 17% over HAR.
-  At the standard gain the fly is 0.6% behind the degree-preserving shuffle at 5 days (consistent
-  across seeds, p ≈ 0.01, but tiny); with every wiring at its best gain it lands between the
-  controls.
+- **The wiring barely matters.** The wirings are within about 1 point of each other (0.6 at 5 days,
+  1.2 at 22), against 17% over HAR. At the standard gain the fly is 0.6% behind the
+  degree-preserving shuffle at 5 days (consistent across seeds, p = 0.01, but tiny); with every
+  wiring at its best gain it lands between the controls.
 - **Memory helps only a little.** At the standard gain, reservoirs with more memory forecast slightly
-  better at 5 days (Spearman ρ = −0.32 over 50 reservoirs, p = 0.02). With every wiring at its best
+  better at 5 days (Spearman ρ = −0.33 over 50 reservoirs, p = 0.02). With every wiring at its best
   gain, where memory ranges from 3 to 31, there's no relationship (15 reservoirs). The HAR features
   already carry a month of history, which leaves little for the reservoir's own memory to add.
-- The 3,000-neuron circuit tells the same story (reservoirs −15.5% to −16.5% vs HAR at 5 days,
-  HAR + inputs −14.4%), with no memory link. One failure worth knowing: the degree-preserving
-  shuffle at gain 12 is saturated (10% of readouts move) and forecast 0.6% annualized volatility on
-  23 October 2008, one bad day that dominates that seed's QLIKE.
+- The 3,000-neuron circuit tells the same story (reservoirs −15.3% to −16.3% vs HAR at 5 days, HAR +
+  inputs −14.2%). No memory link at 5 days; at 22 days more memory goes with lower error (ρ = −0.45,
+  25 reservoirs, p = 0.02), but there most reservoirs trail the linear model anyway, and with four
+  such correlations tested one p of 0.02 is weak evidence. One failure worth knowing: the
+  degree-preserving shuffle at gain 12 is saturated (10% of readouts move) and forecast 0.6%
+  annualized volatility on 23 October 2008, one bad day that dominates that seed's QLIKE.
 
 Why log MSE and not QLIKE, the usual volatility loss: every log model here (HAR, HAR + inputs, the
 reservoirs) is fitted for log MSE, so it compares them like for like. Log models target the mean of
 log variance, not of variance, which can cost them on QLIKE: on simulated GARCH data, HAR fitted on
-variance beats HAR fitted on logs on QLIKE (by a few percent at 5 days, 13–24% at 22 days), enough to
-match or beat the reservoirs (on SPY the two HARs tie). The summaries report QLIKE too, with that
-HAR-on-variance as its reference. Before trusting any of this, the forecasts were checked for
-lookahead: changing all prices after a date leaves every earlier forecast identical.
+variance beats HAR fitted on logs on QLIKE (by a few percent at 5 days, 13–24% at 22 days), enough
+to match or beat the reservoirs (on SPY they tie at 5 days, and the log version is ahead at 22). The
+summaries report QLIKE too, with that HAR-on-variance as its reference. Before trusting any of this,
+the forecasts were checked for lookahead: changing all prices after a date leaves every earlier
+forecast identical.
 
 <p align="center">
   <img src="docs/img/vol_forecast_full.png" width="900" alt="Realized 5-day volatility and the forecasts made for it by HAR, the connectome and the degree-preserving shuffle, around the 2008 crash and COVID">
@@ -476,7 +522,8 @@ python scripts/run_experiment.py --config configs/small.yaml --set reservoir.nor
 - `configs/full.yaml` runs the whole CNS (`method: all`) with 4 parallel jobs. Meant for a desktop
   (32 GB RAM is plenty). With the GPU backend on an RX 7900 XTX the experiment takes about 12
   minutes, the gain sweep about 6, NARMA-10 about 7, the per-region search about 35 and the
-  homeostatic rule about 20; CPU-only is slower. The animation at the top is `brain_activity.py
+  homeostatic rule about 20, the volatility forecasts about 17 and the robustness checks about 20;
+  CPU-only is slower. The animation at the top is `brain_activity.py
   --config configs/full.yaml --set reservoir.backend=torch --compare degree_preserving`; it
   simulates the whole CNS in blocks of 20,000 recorded neurons, so memory stays small.
 
@@ -570,6 +617,9 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - Across the whole brain, two benchmarks (memory capacity and NARMA-10) rank the wirings the same
   way; in the small circuit, NARMA barely separates them. Other tasks, such as predicting a chaotic
   time series, could still rank them differently.
+- The leaky variants keep the standard input scaling and readout noise. Retuning both for slow
+  neurons could raise every wiring's memory; all wirings get the same setup, so the comparison stays
+  paired.
 - One connectome, from one male fly. Whether the dense knots are a general feature of fly brains
   would take a second one (e.g. FlyWire's female brain).
 

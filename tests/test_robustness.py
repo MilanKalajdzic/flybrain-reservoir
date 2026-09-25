@@ -52,6 +52,12 @@ def test_robustness_end_to_end(tmp_path):
     labels = {v: label for v, (label, _) in VARIANTS.items()}
     plt.close(plotting.plot_robustness(best, labels, noise=0.001, path=tmp_path / "rob.png"))
     assert (tmp_path / "rob.png").stat().st_size > 0
+    wide = best.copy()  # values spanning > 20x switch to a log scale; a wiring with no valid gain gets an x
+    wide.loc[wide["variant"] == "leak_0.5", "memory_noisy"] /= 100
+    wide.loc[0, "memory_noisy"] = np.nan
+    fig = plotting.plot_robustness(wide, labels, noise=0.001)
+    assert fig.axes[0].get_yscale() == "log"
+    plt.close(fig)
 
 
 def test_robustness_script(tmp_path):
