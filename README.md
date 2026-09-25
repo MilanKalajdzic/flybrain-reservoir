@@ -328,6 +328,10 @@ same fitting code.
   fitting, `memory.readout_noise`). The noise-free readout rescales every neuron and can decode
   fluctuations of a millionth, which no physical system could carry; on the whole-brain fly that
   is 84% of its measured memory. The noisy number counts only memory that is actually usable.
+- **NARMA-10** (Atiya & Parlos 2000): predict y(t+1) = 0.3 y(t) + 0.05 y(t) Σᵢ y(t−i) +
+  1.5 u(t−9) u(t) + 0.1 from a random input u. The product of inputs 10 steps apart needs memory
+  *and* a nonlinearity, so a linear model of the last 10 inputs only gets NRMSE ≈ 0.60. Scored on
+  held-out steps at every gain, like the gain sweep (`scripts/narma.py`).
 - **Readout stability**: run the reservoir twice with inputs that differ only in the distant past.
   *Unstable readouts* end up in different states (they latched or went chaotic); a valid reservoir
   has none. Four such tests with different inputs, and the worst one counts
@@ -383,6 +387,7 @@ python scripts/gain_sweep.py --config configs/small.yaml     # each wiring at it
 python scripts/hot_spots.py --config configs/small.yaml      # where the dominant eigenvalue lives
 python scripts/region_gains.py --config configs/small.yaml   # each brain region its own gain
 python scripts/homeostasis.py --config configs/small.yaml    # each neuron its own gain (homeostatic rule)
+python scripts/narma.py --config configs/small.yaml          # NARMA-10 benchmark at every gain
 python scripts/vol_forecast.py --config configs/small.yaml   # volatility forecasts, same reservoirs
 python scripts/report.py                                      # headline numbers from all finished runs
 ```
@@ -516,14 +521,15 @@ src/flyres/
   sweep.py        gain sweep: each wiring at its own best valid gain
   regions.py      per-region gains: anatomical regions, coordinate search for each region's factor
   homeostasis.py  per-neuron gains from synaptic scaling toward a target input size
+  narma.py        NARMA-10 benchmark: memory plus nonlinearity, at every gain
   volatility.py   realized-volatility forecasts: HAR benchmarks, reservoir readouts, DM tests
   activity.py     neuron groups, activity relative to normal, soma positions
   experiment.py   runs everything and writes results
   plotting.py     figures and the brain animation
   synthetic.py    fake data for tests and the offline demo
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
-                  gain_sweep.py, hot_spots.py, region_gains.py, homeostasis.py, vol_forecast.py,
-                  report.py
+                  gain_sweep.py, hot_spots.py, region_gains.py, homeostasis.py, narma.py,
+                  vol_forecast.py, report.py
 configs/          small.yaml (laptop), full.yaml (whole CNS), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
 docs/img/         figures used in this README

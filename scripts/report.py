@@ -89,6 +89,20 @@ def run_report(folder: Path) -> list[str]:
                          f"{s['active_readouts_single'].mean():.0%} → {s['active_readouts_regions'].mean():.0%} | "
                          f"{int(s['valid_single'].sum())}/{len(s)} → {int(s['valid_regions'].sum())}/{len(s)} |")
         lines.append("")
+    narma = folder / "narma" / "grid.csv"
+    if narma.exists():
+        from flyres.narma import best_narma
+
+        grid = pd.read_csv(narma)
+        best = best_narma(grid, 0.9)
+        base = folder / "narma" / "linear_baseline.csv"
+        lines += ["NARMA-10 error (NRMSE, lower is better)"
+                  + (f"; linear baseline {pd.read_csv(base)['nrmse'].mean():.3f}" if base.exists() else ""), "",
+                  "| wiring | at gain 0.9 | best valid gain | NRMSE there | valid gains |", "|---|---|---|---|---|"]
+        for _, r in best.iterrows():
+            there = f"{r['best_gain']:g} | {r['nrmse']:.3f}" if np.isfinite(r["nrmse"]) else "none | -"
+            lines.append(f"| {r['wiring']} | {r['standard_nrmse']:.3f} | {there} | {r['valid_gains']}/{r['gains_tried']} |")
+        lines.append("")
     homeo = folder / "homeostasis" / "results.csv"
     if homeo.exists():
         r = pd.read_csv(homeo)

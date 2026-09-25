@@ -605,3 +605,37 @@ def plot_vol_forecast(predictions: pd.DataFrame, ticker: str, horizon: int, wind
              ha="left", fontsize=8.5, color=INK_2)
     fig.tight_layout()
     return _save(fig, path)
+
+
+def plot_narma(grid: pd.DataFrame, baseline: float | None = None, path=None):
+    """NARMA-10 error against gain, one line per wiring (mean over seeds). Lower is better.
+    Filled markers = valid reservoir, hollow = some readouts latch or go chaotic."""
+    fig, ax = _figure(figsize=(7.4, 4.0))
+    lo, hi = grid["gain"].min(), grid["gain"].max()
+    for w in [w for w in WIRINGS if w in set(grid["wiring"])]:
+        g = grid[grid["wiring"] == w].sort_values("gain")
+        color, main = WIRING_COLORS[w], w == "connectome"
+        ax.plot(g["gain"], g["nrmse"], color=color, linewidth=2.4 if main else 1.6, zorder=3 if main else 2,
+                label=LABELS[w], **LINE)
+        ok = g["valid"].to_numpy()
+        ax.scatter(g["gain"][ok], g["nrmse"][ok], s=46, color=color, edgecolors=SURFACE, linewidths=2, zorder=4)
+        ax.scatter(g["gain"][~ok], g["nrmse"][~ok], s=40, facecolors=SURFACE, edgecolors=color, linewidths=1.6,
+                   zorder=4)
+    if baseline is not None and np.isfinite(baseline):
+        ax.axhline(baseline, color=INK_2, linewidth=1.2, linestyle="--", zorder=1)
+        ax.text(lo, baseline, " linear model on the last 10 inputs", va="bottom", ha="left", fontsize=8.5,
+                color=INK_2)
+    ax.set_xscale("log")
+    ax.set_xticks([g for g in (0.25, 0.5, 1, 2, 3, 6, 12, 20, 30, 50) if lo <= g <= hi])
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    ax.xaxis.set_minor_locator(mticker.NullLocator())
+    ax.set_xlabel("spectral radius")
+    ax.set_ylabel("NRMSE (lower = better)")
+    ax.set_ylim(bottom=0)
+    _legend(ax, loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    fig.tight_layout()
+    fig.suptitle("NARMA-10 error at each gain", x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK,
+                 y=1.07)
+    fig.text(0.01, 1.0, "Mean over seeds. Hollow = invalid reservoir (some neurons latch or go chaotic).",
+             ha="left", fontsize=8.5, color=INK_2)
+    return _save(fig, path)
