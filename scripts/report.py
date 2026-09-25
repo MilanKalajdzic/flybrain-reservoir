@@ -89,6 +89,21 @@ def run_report(folder: Path) -> list[str]:
                          f"{s['active_readouts_single'].mean():.0%} → {s['active_readouts_regions'].mean():.0%} | "
                          f"{int(s['valid_single'].sum())}/{len(s)} → {int(s['valid_regions'].sum())}/{len(s)} |")
         lines.append("")
+    homeo = folder / "homeostasis" / "results.csv"
+    if homeo.exists():
+        r = pd.read_csv(homeo)
+        col = "memory_noisy" if "memory_noisy_single" in r.columns else "memory"
+        lines += ["Homeostatic gains, memory " + ("with readout noise " if col == "memory_noisy" else "")
+                  + "on a fresh input", "",
+                  "| wiring | best single gain | homeostatic | change | targets | valid on fresh input |",
+                  "|---|---|---|---|---|---|"]
+        for w in order(r["wiring"].unique()):
+            s = r[r["wiring"] == w]
+            d = (s[f"{col}_homeostatic"] - s[f"{col}_single"]).mean()
+            lines.append(f"| {w} | {pm(s[f'{col}_single'])} | {pm(s[f'{col}_homeostatic'])} | {d:+.1f} | "
+                         f"{', '.join(f'{t:g}' for t in s['target'])} | "
+                         f"{int(s['valid_single'].sum())}/{len(s)} → {int(s['valid_homeostatic'].sum())}/{len(s)} |")
+        lines.append("")
     for sub, label in (("volatility", "standard gain"), ("volatility_best_gain", "each wiring at its best valid gain")):
         vm = folder / sub / "metrics.csv"
         if not vm.exists():

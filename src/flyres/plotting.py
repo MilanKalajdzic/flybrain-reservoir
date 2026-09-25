@@ -380,10 +380,14 @@ def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", 
 DIVERGING = ["#184f95", "#5598e7", "#b7d3f6", "#f0efec", "#f5b9b8", "#e66767", "#a82e2d"]
 
 
-def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: float | None = None, path=None):
-    """Left: memory on a fresh input at each wiring's best single gain (hollow) and with per-region gains
-    (filled), small dots = seeds. Right: the factor the search gave each region, per wiring (geometric
-    mean over seeds, log color scale, red = turned up)."""
+def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: float | None = None, path=None,
+                      after: str = "regions", after_label: str = "per-region gains", title: str = "Per-region gains",
+                      heat_title: str = "Factor on each region's incoming synapses (neurons)",
+                      subtitle: str = "Hollow = each wiring's best single gain. Filled = after the search turns each "
+                                      "region up (red) or down (blue). Mean over seeds, small dots = seeds."):
+    """Left: memory on a fresh input at each wiring's best single gain (hollow) and after (filled; results
+    columns `<metric>_<after>`), small dots = seeds. Right: the factor each region got, per wiring (geometric
+    mean over seeds, log color scale, red = turned up). Also draws the homeostatic-gains figure."""
     from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 
     noisy = "memory_noisy_single" in results.columns
@@ -406,18 +410,29 @@ def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: 
 
     ax.grid(True, axis="x", color=GRID, linewidth=0.8)
     ax.set_axisbelow(True)
-    xmax = 1.15 * float(np.nanmax(results[[f"{col}_single", f"{col}_regions"]].to_numpy()))
+    xmax = 1.15 * float(np.nanmax(results[[f"{col}_single", f"{col}_{after}"]].to_numpy()))
     ax.set_xlim(0, xmax)
+    any_invalid = False
     for i, w in enumerate(wirings):
         r = results[results["wiring"] == w]
-        a, b = r[f"{col}_single"], r[f"{col}_regions"]
+        a, b = r[f"{col}_single"], r[f"{col}_{after}"]
+        ok = r[f"valid_{after}"].astype(bool).to_numpy() if f"valid_{after}" in r else np.ones(len(r), bool)
         color = WIRING_COLORS[w]
-        ax.plot([a.mean(), b.mean()], [i, i], color=color, linewidth=2.0, zorder=2, **LINE)
+        ax.plot([a.mean(), b.mean()], [i, i], color=color, linewidth=2.0, zorder=2,
+                linestyle="-" if ok.any() else ":", **LINE)
         ax.scatter(a, np.full(len(a), i + 0.2), s=10, color=color, alpha=0.45, linewidths=0, zorder=2)
-        ax.scatter(b, np.full(len(b), i + 0.2), s=10, color=color, alpha=0.45, linewidths=0, zorder=2)
+        ax.scatter(b[ok], np.full(ok.sum(), i + 0.2), s=10, color=color, alpha=0.45, linewidths=0, zorder=2)
+        ax.scatter(b[~ok], np.full((~ok).sum(), i + 0.2), s=14, color=color, alpha=0.6, marker="x", linewidths=1,
+                   zorder=2)
         ax.scatter([a.mean()], [i], s=70, facecolors=SURFACE, edgecolors=color, linewidths=2.0, zorder=3)
-        ax.scatter([b.mean()], [i], s=80, color=color, edgecolors=SURFACE, linewidths=2.0, zorder=4)
-        ax.text(max(a.mean(), b.mean()) + 0.03 * xmax, i, f"{b.mean():.1f}", ha="left", va="center",
+        if ok.all():
+            ax.scatter([b.mean()], [i], s=80, color=color, edgecolors=SURFACE, linewidths=2.0, zorder=4)
+            note = ""
+        else:  # an invalid reservoir (latches or goes chaotic) doesn't count, so don't draw it like one that does
+            any_invalid = True
+            ax.scatter([b.mean()], [i], s=70, color=color, marker="X", edgecolors=SURFACE, linewidths=1.0, zorder=4)
+            note = "  (latches)" if not ok.any() else f"  ({ok.sum()}/{len(ok)} valid)"
+        ax.text(max(a.mean(), b.mean()) + 0.03 * xmax, i, f"{b.mean():.1f}{note}", ha="left", va="center",
                 fontsize=8.5, color=INK_2)
     ax.set_yticks(range(len(wirings)), [LABELS[w] for w in wirings])
     ax.set_ylim(len(wirings) - 0.5, -0.5)  # same row centres as the heatmap
@@ -426,9 +441,13 @@ def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: 
                   color=INK_2, fontsize=9)
     handles = [plt.Line2D([], [], marker="o", linestyle="", markersize=7, markerfacecolor=SURFACE,
                           markeredgecolor=INK_2, markeredgewidth=1.6, label="best single gain"),
-               plt.Line2D([], [], marker="o", linestyle="", markersize=7, color=INK_2, label="per-region gains")]
-    ax.legend(handles=handles, frameon=False, fontsize=8.5, labelcolor=INK_2, loc="lower right",
-              bbox_to_anchor=(1.0, 1.0), ncol=2, borderaxespad=0.2, handletextpad=0.3, columnspacing=1.0)
+               plt.Line2D([], [], marker="o", linestyle="", markersize=7, color=INK_2, label=after_label)]
+    if any_invalid:
+        handles.append(plt.Line2D([], [], marker="X", linestyle="", markersize=7, color=INK_2,
+                                  label="invalid on fresh input"))
+    ax.legend(handles=handles, frameon=False, fontsize=8 if len(handles) > 2 else 8.5, labelcolor=INK_2,
+              loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=len(handles), borderaxespad=0.2,
+              handletextpad=0.2, columnspacing=0.8)
 
     t = region_table.assign(log2=np.log2(region_table["factor"]))
     lf = t.pivot_table(index="wiring", columns="region", values="log2", aggfunc="mean").reindex(
@@ -464,11 +483,9 @@ def plot_region_gains(results: pd.DataFrame, region_table: pd.DataFrame, noise: 
     cb.ax.tick_params(colors=MUTED, labelcolor=INK_2, labelsize=8)
 
     ax.set_title("Memory on a fresh input", loc="left", fontsize=9.5, color=INK_2, pad=18)
-    ax_h.set_title("Factor on each region's incoming synapses (neurons)", loc="left", fontsize=9.5, color=INK_2,
-                   pad=18)
-    fig.suptitle("Per-region gains", x=0.125, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.06)
-    fig.text(0.125, 0.995, "Hollow = each wiring's best single gain. Filled = after the search turns each region up "
-             "(red) or down (blue). Mean over seeds, small dots = seeds.", ha="left", fontsize=8.5, color=INK_2)
+    ax_h.set_title(heat_title, loc="left", fontsize=9.5, color=INK_2, pad=18)
+    fig.suptitle(title, x=0.125, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.06)
+    fig.text(0.125, 0.995, subtitle, ha="left", fontsize=8.5, color=INK_2)
     return _save(fig, path)
 
 

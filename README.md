@@ -341,6 +341,7 @@ python scripts/brain_activity.py --config configs/small.yaml
 python scripts/gain_sweep.py --config configs/small.yaml     # each wiring at its own best gain
 python scripts/hot_spots.py --config configs/small.yaml      # where the dominant eigenvalue lives
 python scripts/region_gains.py --config configs/small.yaml   # each brain region its own gain
+python scripts/homeostasis.py --config configs/small.yaml    # each neuron its own gain (homeostatic rule)
 python scripts/vol_forecast.py --config configs/small.yaml   # volatility forecasts, same reservoirs
 python scripts/report.py                                      # headline numbers from all finished runs
 ```
@@ -472,13 +473,15 @@ src/flyres/
   diagnostics.py  where the dominant eigenvalue lives, hot-spot cascade
   sweep.py        gain sweep: each wiring at its own best valid gain
   regions.py      per-region gains: anatomical regions, coordinate search for each region's factor
+  homeostasis.py  per-neuron gains from synaptic scaling toward a target input size
   volatility.py   realized-volatility forecasts: HAR benchmarks, reservoir readouts, DM tests
   activity.py     neuron groups, activity relative to normal, soma positions
   experiment.py   runs everything and writes results
   plotting.py     figures and the brain animation
   synthetic.py    fake data for tests and the offline demo
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
-                  gain_sweep.py, hot_spots.py, region_gains.py, vol_forecast.py, report.py
+                  gain_sweep.py, hot_spots.py, region_gains.py, homeostasis.py, vol_forecast.py,
+                  report.py
 configs/          small.yaml (laptop), full.yaml (whole CNS), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
 docs/img/         figures used in this README
