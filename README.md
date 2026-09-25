@@ -60,9 +60,9 @@ number adds a little readout noise, so it only counts memory a real readout coul
 
 | memory capacity | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
 |---|---|---|---|---|---|
-| 3,000 neurons, readout noise | **2.8** | 5.9 | 3.0 | 4.6 | 6.9 |
+| 3,000 neurons, readout noise | **2.8** | 5.8 | 3.0 | 4.3 | 6.8 |
 | whole CNS, readout noise | **2.2** | 15.5 | 2.4 | 2.9 | 7.4 |
-| *3,000 neurons, noise-free* | *9.2* | *10.5* | *9.3* | *10.0* | *11.0* |
+| *3,000 neurons, noise-free* | *9.2* | *10.2* | *9.2* | *9.7* | *11.0* |
 | *whole CNS, noise-free* | *14.1* | *27.7* | *15.7* | *14.0* | *16.7* |
 
 Noise-free, the fly's whole-brain memory looks respectable, but 84% of it lives in fluctuations
@@ -106,15 +106,15 @@ latching tests with different inputs, for every seed.
 
 | best valid memory, readout noise (gain) | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
 |---|---|---|---|---|---|
-| 3,000 neurons | 6.7 (3) | 6.8 (12) | 7.4 (3) | 4.1 (1) | 7.2 (1) |
+| 3,000 neurons | 6.7 (3) | 6.0 (1) | 7.4 (3) | 4.3 (1.1) | 7.1 (1) |
 | whole CNS | **2.9** (1.25) | 22.8 (1) | 2.9 (1.1) | 3.1 (1) | 30.8 (8) |
 
 - **3,000 neurons: a tie.** Raising the gain to 3 more than doubles the fly's memory, and four of
-  the five wirings land between 6.7 and 7.4, within the seed-to-seed spread (the sign shuffle
-  latches at any gain above 1 and stays at 4.1). In this circuit the next hot spot is much weaker
+  the five wirings land between 6.0 and 7.4, within the seed-to-seed spread (the sign shuffle
+  latches at any gain above 1.1 and stays at 4.3). In this circuit the next hot spot is much weaker
   than the antennal lobe (82 vs 251), so the gain can go up about 3× and wake most of the circuit
   (59% of readouts move) before anything latches. Noise-free, the connectome and the weight shuffle
-  even come out ahead (13.9 and 14.7 vs 9.4 to 11.9), but that lead lives in tiny fluctuations and
+  even come out ahead (14.0 and 14.7 vs 9.6 to 11.2), but that lead lives in tiny fluctuations and
   disappears with noise.
 - **Whole brain: the fly stays far behind.** Its best is 2.9 at gain 1.25, and past that its cores
   latch: the next hot spots are close behind the first (206, 178, 173…), so there's no headroom.
@@ -148,17 +148,17 @@ search.
 
 | memory with readout noise, fresh inputs | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
 |---|---|---|---|---|---|
-| 3,000 neurons, best single gain | 6.8 | 6.9 | 7.4 | 5.9 | 7.2 |
-| 3,000 neurons, per-region gains | **11.5** | 42.6 | 12.4 | 12.2 | 36.0 |
+| 3,000 neurons, best single gain | 6.8 | 6.0 | 7.4 | 6.7 | 7.1 |
+| 3,000 neurons, per-region gains | **11.3** | 32.7 | 12.1 | 12.6 | 38.1 |
 | whole CNS, best single gain | 3.4 | 22.9 | 3.3 | 4.7 | 30.9 |
 | whole CNS, per-region gains | **6.2** | 47.5 | 6.0 | 7.2 | 71.2 |
 
 (Single gains here are each seed's own best, measured on the fresh inputs, so they differ from the
-sweep table, which uses one gain for all seeds; most for the sign shuffle, 5.9 vs 4.1 and 4.7 vs 3.1.
+sweep table, which uses one gain for all seeds; most for the sign shuffle, 6.7 vs 4.3 and 4.7 vs 3.1.
 The fly's whole-brain single gain is valid on the fresh inputs for 2 of 3 seeds.)
 
-- **The fly gains about 75%, random wiring 2–6×.** In the small circuit the tie turns into a 3–4×
-  gap (11.5 vs 42.6 and 36.0). Across the whole brain the gap stays about where it was, 8–12×
+- **The fly gains about 75%, random wiring 2–5×.** In the small circuit the tie turns into a 3×
+  gap (11.3 vs 32.7 and 38.1). Across the whole brain the gap stays about where it was, 8–12×
   (6.2 vs 47.5 and 71.2).
 - **Same split as before.** The three wirings with the fly's connections end up together (around 12
   in the small circuit, 6 to 7 in the whole brain), the two scrambled ones far above.
@@ -191,8 +191,8 @@ on fresh ones, as before.
 
 | memory with readout noise, fresh inputs | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
 |---|---|---|---|---|---|
-| 3,000 neurons, best single gain | 6.8 | 6.9 | 7.4 | 5.9 | 7.2 |
-| 3,000 neurons, homeostatic | 15.3 (1 of 3 seeds valid) | 17.3 | 17.9 | 13.1 (2 of 3) | 15.5 |
+| 3,000 neurons, best single gain | 6.8 | 6.0 | 7.4 | 6.7 | 7.1 |
+| 3,000 neurons, homeostatic | 15.4 (1 of 3 seeds valid) | 19.8 | 17.8 | 10.0 | 15.1 |
 | whole CNS, best single gain | 3.4 (2 of 3) | 22.9 | 3.3 | 4.7 | 30.9 |
 | whole CNS, homeostatic | **5.4** (2 of 3) | 55.2 | latches (0 of 3) | 9.6 | 39.5 |
 
@@ -214,10 +214,9 @@ do.)
   can have no level near the target: a bit more gain tips its neighborhood into a self-sustained
   active state, a bit less drops it back. So after 30 rounds usually only a minority of neurons are
   within ×2 of the target; at the highest target it does settle, and then almost everything latches
-  (1 valid of 30 tries). Two other rules collapsed first (documented in
-  `src/flyres/homeostasis.py`). Validity this close to the edge is also fragile: the same
-  small-circuit run gave the fly 0 valid tries on one machine and 1 on another. Erdős–Rényi's
-  whole-brain number varies a lot between seeds (39.5 ± 37.6).
+  (2 valid of 30 tries). Two other rules collapsed first (documented in
+  `src/flyres/homeostasis.py`). Erdős–Rényi's whole-brain number varies a lot between seeds
+  (39.5 ± 37.6).
 
 **A second benchmark: NARMA-10 (`scripts/narma.py`).** Memory capacity only asks a reservoir to
 replay its input. NARMA-10, the standard benchmark since Jaeger (2003), asks it to compute with it:
@@ -231,7 +230,7 @@ at every gain and is judged at its best valid one, with the same readout noise a
 
 | NARMA-10 error (NRMSE, lower is better), best valid gain | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
 |---|---|---|---|---|---|
-| 3,000 neurons, readout noise | 0.70 | 0.67 | 0.70 | 0.66 | 0.66 |
+| 3,000 neurons, readout noise | 0.70 | 0.66 | 0.70 | 0.65 | 0.68 |
 | whole CNS, readout noise | **0.77** | 0.42 | 0.75 | 0.76 | 0.50 |
 | *whole CNS, noise-free* | *0.43* | *0.37* | *0.43* | *0.38* | *0.40* |
 
@@ -239,9 +238,9 @@ at every gain and is judged at its best valid one, with the same readout noise a
   connections beat the linear model (0.42 and 0.50); the three that keep them don't (0.75 to 0.77),
   even at their best gain.
 - **Memory capacity predicts it.** Over all valid whole-brain reservoirs, more memory means lower
-  NARMA error (Spearman ρ = −0.69, 90 reservoirs; −0.30 in the small circuit). So memory capacity
+  NARMA error (Spearman ρ = −0.69, 90 reservoirs; −0.38 in the small circuit). So memory capacity
   isn't a quirky benchmark: it tracks the ability to compute with the past.
-- **In the small circuit nothing beats the linear model** once there's readout noise (best 0.66
+- **In the small circuit nothing beats the linear model** once there's readout noise (best 0.65
   against 0.60). 300 readout neurons out of 3,000 can't carry that product cleanly enough.
 - **Noise-free, every wiring looks alike** (0.37 to 0.43 across the whole brain, in line with
   published echo state results), because the readout decodes the fly's millionth-sized
@@ -264,10 +263,10 @@ So leak rates 0.5 and 0.2, where each neuron keeps part of its previous state.
 | whole CNS, random input neurons | **2.3** | 21.0 | 2.6 | 2.9 | 29.5 |
 | whole CNS, leak rate 0.5 | **0.8** | 4.2 | 0.7 | 1.3 | 2.0 |
 | whole CNS, leak rate 0.2 | **0.3** | 1.0 | 0.2 | 0.4 | 0.6 |
-| 3,000 neurons, standard | **6.7** | 6.8 | 7.4 | 4.1 | 7.2 |
-| 3,000 neurons, random input neurons | **3.6** | 6.3 | 3.9 | 6.1 | 7.2 |
-| 3,000 neurons, leak rate 0.5 | **4.9** | 3.0 | 5.1 | 2.1 | 3.4 |
-| 3,000 neurons, leak rate 0.2 | **3.2** | 1.3 | 3.5 | 0.9 | 1.6 |
+| 3,000 neurons, standard | **6.7** | 6.0 | 7.4 | 4.3 | 7.1 |
+| 3,000 neurons, random input neurons | **3.6** | 6.1 | 3.9 | 7.5 | 7.2 |
+| 3,000 neurons, leak rate 0.5 | **4.9** | 2.9 | 5.1 | 2.2 | 3.3 |
+| 3,000 neurons, leak rate 0.2 | **3.2** | 1.3 | 3.5 | 1.0 | 1.5 |
 
 (3 seeds each. The standard rows are the gain sweep again.)
 
@@ -282,7 +281,7 @@ So leak rates 0.5 and 0.2, where each neuron keeps part of its previous state.
   and the fly stays behind the best control (5× and 3×), so there's little left to compare.
 - **The one twist: slow neurons in the small circuit.** There the fly's connections with their real
   signs (connectome and weight shuffle) lose the least and end up ahead of both scrambled wirings
-  (4.9 and 5.1 vs 3.0 and 3.4 at leak 0.5, 3.2 and 3.5 vs 1.3 and 1.6 at 0.2); shuffling the signs
+  (4.9 and 5.1 vs 2.9 and 3.3 at leak 0.5, 3.2 and 3.5 vs 1.3 and 1.5 at 0.2); shuffling the signs
   puts the same connections last. With leaky neurons they tolerate gains of 4 to 6 before latching,
   while the scrambled wirings do best near 1. It's the only setting in this project where the fly's
   wiring beats random wiring on memory with readout noise; it doesn't carry over to the whole brain,
@@ -303,7 +302,7 @@ rule.
 | male CNS, whole | **2.9** (1.25) | 22.8 (1) | 2.9 (1.1) | 3.1 (1) | 30.8 (8) |
 | FlyWire, whole brain | **3.0** (1.25) | 21.8 (1) | 3.1 (1.5) | 3.3 (1) | 72.4 (1.5) |
 | male CNS, 3,000 neurons | **6.7** (3) | 6.8 (12) | 7.4 (3) | 4.1 (1) | 7.2 (1) |
-| FlyWire, 3,000 neurons | **4.8** (2) | 21.2 (1) | 3.8 (1.5) | 11.8 (1) | 27.2 (1.25) |
+| FlyWire, 3,000 neurons | **4.8** (2) | 24.8 (1.25) | 3.8 (1.5) | 6.7 (1.25) | 41.5 (1.1) |
 
 (3 seeds each.)
 
@@ -316,16 +315,15 @@ rule.
   against 16.1. At each wiring's best gain the fly reaches 3.0 against 22 and 72, and the three
   wirings with the fly's connections end up at 3.0 to 3.3, as in the male CNS (2.9 to 3.1).
 - **The small-circuit tie doesn't replicate.** FlyWire's 3,000-neuron circuit, grown the same way
-  from its most-connected sensory neurons, leaves the fly 4–6× behind even at its best gain (4.8 vs
-  21 and 27). The tie was a property of the male CNS circuit, not of fly wiring.
-- **Where FlyWire differs.** Erdős–Rényi does much better (72 vs 31, with a large seed spread, ±23),
-  and in the small circuit shuffling the signs helps (11.8 vs the fly's 4.8), which it doesn't in the
-  male CNS.
-- **Robustness on FlyWire's small circuit.** Random input neurons leave the fly behind again (4.0
-  vs 27.5). The slow-neuron twist only half holds: at leak 0.5 the fly comes out ahead (11.4 vs 8.2),
-  but only at gains where its validity flips from one gain to the next (valid at 8 and 12, not at 4
-  and 6), and the weight shuffle, with the same connections, doesn't get there; at leak 0.2 the fly
-  is behind (2.1 vs 3.1). So that exception is fragile.
+  from its most-connected sensory neurons, leaves the fly 5–9× behind even at its best gain (4.8 vs
+  25 and 42). The tie was a property of the male CNS circuit, not of fly wiring.
+- **Where FlyWire differs.** Erdős–Rényi does much better (72 vs 31 across the whole brain, 42 vs 7 in
+  the small circuit), with a large seed spread (±23 and ±14).
+- **Robustness on FlyWire's small circuit.** Random input neurons leave the fly behind again (3.8
+  vs 34.5). The slow-neuron twist only half holds: at leak 0.5 the fly draws level with the best
+  control (9.1 vs 8.9), but only at a gain where it passes the latching tests while the gains around
+  it fail (valid at 8, not at 4, 6 or 12), and the weight shuffle, with the same connections, never
+  gets there; at leak 0.2 the fly is behind (2.0 vs 3.4). So that exception is fragile.
 
 So: biological wiring isn't a better reservoir, and at brain scale it's a clearly worse one, whether
 it gets one global gain, one per region or one per neuron, on both benchmarks, with the input moved
@@ -370,12 +368,14 @@ gap between a reservoir and *HAR + inputs* is what the wiring adds.
   better at 5 days (Spearman ρ = −0.33 over 50 reservoirs, p = 0.02). With every wiring at its best
   gain, where memory ranges from 3 to 31, there's no relationship (15 reservoirs). The HAR features
   already carry a month of history, which leaves little for the reservoir's own memory to add.
-- The 3,000-neuron circuit tells the same story (reservoirs −15.3% to −16.3% vs HAR at 5 days, HAR +
-  inputs −14.2%). No memory link at 5 days; at 22 days more memory goes with lower error (ρ = −0.45,
-  25 reservoirs, p = 0.02), but there most reservoirs trail the linear model anyway, and with four
-  such correlations tested one p of 0.02 is weak evidence. One failure worth knowing: the
-  degree-preserving shuffle at gain 12 is saturated (10% of readouts move) and forecast 0.6%
-  annualized volatility on 23 October 2008, one bad day that dominates that seed's QLIKE.
+- The 3,000-neuron circuit tells the same story (reservoirs −15.2% to −16.0% vs HAR at 5 days, HAR +
+  inputs −14.2%). More memory goes with slightly lower error at both horizons (ρ = −0.37, p = 0.07 at
+  5 days; −0.41, p = 0.04 at 22; 25 reservoirs), but at 22 days most reservoirs trail the linear
+  model anyway, and with four such correlations tested that's weak evidence. One failure worth
+  knowing: with every wiring at its best gain, one seed of the sign shuffle (gain 1.1) passes all
+  its white-noise latching tests but blows up in the 2008 crash. From late October 2008 to March
+  2009 it forecasts more than 200% annualized volatility, peaking in the thousands of percent, where
+  its other seeds say about 45%. That one seed puts the sign shuffle's average below HAR (+15.7%).
 
 Why log MSE and not QLIKE, the usual volatility loss: every log model here (HAR, HAR + inputs, the
 reservoirs) is fitted for log MSE, so it compares them like for like. Log models target the mean of
