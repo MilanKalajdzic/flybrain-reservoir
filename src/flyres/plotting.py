@@ -798,3 +798,62 @@ def plot_robustness(best: pd.DataFrame, labels: dict, noise: float | None = None
         sub = f"Memory with readout noise (std {noise:g}). " + sub
     fig.text(0.01, 1.01, sub, ha="left", fontsize=8.5, color=INK_2)
     return _save(fig, path)
+
+
+def plot_scoreboard(table: pd.DataFrame, setups: dict, path=None, scales=None, connectomes=None):
+    """The fly against the better of the two random rewirings in every setup: one panel per scale, one row
+    per setup, one dumbbell per connectome (log scale, so the gap reads as a ratio).
+    table: rows from scoreboard.scoreboard(). setups: setup key -> label, in display order. scales and
+    connectomes: display order (default: order of appearance); ones missing from the table are skipped."""
+    scales = [x for x in (scales or dict.fromkeys(table["scale"])) if x in set(table["scale"])]
+    connectomes = [x for x in (connectomes or dict.fromkeys(table["connectome"])) if x in set(table["connectome"])]
+    rows = [s for s in setups if s in set(table["setup"])]
+    markers = dict(zip(connectomes, ("o", "D", "s", "^")))
+    offsets = dict(zip(connectomes, np.linspace(-0.17, 0.17, len(connectomes)) if len(connectomes) > 1 else [0.0]))
+    fly_color = WIRING_COLORS["connectome"]
+    fig, axes = _figure(len(scales), figsize=(4.3 * len(scales) + 2.2, 0.52 * len(rows) + 1.3), sharey=True,
+                        sharex=True)
+    axes = np.atleast_1d(axes)
+    values = table[["fly", "random"]].to_numpy(float)
+    lo, hi = np.nanmin(values[values > 0]), np.nanmax(values)
+    for ax, scale in zip(axes, scales):
+        sub = table[table["scale"] == scale]
+        for c in connectomes:
+            t = sub[sub["connectome"] == c].set_index("setup")
+            for i, setup in enumerate(rows):
+                if setup not in t.index:
+                    continue
+                y = i + offsets[c]
+                f, r = t.loc[setup, "fly"], t.loc[setup, "random"]
+                ax.plot([f, r], [y, y], color=GRID, linewidth=2.2, zorder=1, **LINE)
+                ax.scatter([f], [y], marker=markers[c], s=58, color=fly_color, edgecolors=SURFACE, linewidths=1.5,
+                           zorder=2)
+                # the random wiring on top and a bit smaller, so a tie still shows both
+                ax.scatter([r], [y], marker=markers[c], s=34, color=MUTED, edgecolors=SURFACE, linewidths=1.2, zorder=3)
+        ax.set_xscale("log")
+        ax.set_xlim(lo / 1.6, hi * 1.6)
+        ax.xaxis.set_major_locator(mticker.FixedLocator([t for t in (0.2, 0.5, 1, 2, 5, 10, 20, 50, 100)
+                                                         if lo / 1.6 <= t <= hi * 1.6]))
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+        ax.xaxis.set_minor_locator(mticker.NullLocator())
+        ax.grid(False, axis="y")
+        ax.set_title(scale, loc="left", fontsize=9.5, color=INK_2)
+        ax.set_xlabel("memory capacity, readout noise (log scale)")
+    axes[0].set_yticks(range(len(rows)), [setups[s] for s in rows])
+    axes[0].set_ylim(len(rows) - 0.5, -0.5)
+    axes[0].tick_params(axis="y", length=0)
+    from matplotlib.lines import Line2D
+
+    handles = [Line2D([], [], marker="o", linestyle="", color=fly_color, markersize=7, label="the fly's wiring"),
+               Line2D([], [], marker="o", linestyle="", color=MUTED, markersize=7,
+                      label="best random rewiring\n(degree-preserving or\nErdős–Rényi)")]
+    handles += [Line2D([], [], marker=markers[c], linestyle="", color=INK_2, markersize=6, label=c)
+                for c in connectomes]
+    _legend(axes[-1], handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    fig.tight_layout()
+    height = fig.get_size_inches()[1]  # place the titles a fixed distance above the plot, whatever its height
+    fig.suptitle("The fly against random wiring, in every setup", x=0.01, ha="left", fontsize=11, fontweight="bold",
+                 color=INK, y=1 + 0.38 / height)
+    fig.text(0.01, 1 + 0.06 / height, "Memory each reservoir can use (higher = better), 3 seeds each. Blue = the fly, "
+             "gray = the better of the two random rewirings.", ha="left", fontsize=8.5, color=INK_2)
+    return _save(fig, path)
