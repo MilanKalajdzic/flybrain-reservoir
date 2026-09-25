@@ -41,11 +41,12 @@ a small circuit but leaves it 8–11× behind across the whole brain. Per-region
 wiring far more than the fly; per-neuron gains help every wiring in the small circuit but mostly
 make the fly latch, and across the whole brain they widen the gap to about 10×. A second benchmark
 (NARMA-10) agrees, and so do the robustness checks: feeding the input into random neurons or slowing
-the neurons down leaves the fly far behind across the whole brain (though with slow neurons, the
-fly's connections come out ahead in the small circuit). On volatility, where there is something to
-forecast, every reservoir beats the standard HAR benchmark by about 17% at a 5-day horizon, but a
-linear model with the same inputs already gets 15 of those 17 points, and the wiring moves the
-result by about 1 point.
+the neurons down leaves the fly far behind across the whole brain (with slow neurons, the fly's
+connections come out ahead in the small circuit, a fragile exception). A second connectome, FlyWire's
+female brain, has the same knots in the same order and the same whole-brain deficit, but not the
+small-circuit tie. On volatility, where there is something to forecast, every reservoir beats the
+standard HAR benchmark by about 17% at a 5-day horizon, but a linear model with the same inputs
+already gets 15 of those 17 points, and the wiring moves the result by about 1 point.
 
 **Markets: no edge at either scale, and the wiring doesn't matter.** Every reservoir has an IC around
 0.015 (t ≈ 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe
@@ -282,12 +283,53 @@ So leak rates 0.5 and 0.2, where each neuron keeps part of its previous state.
 - **The one twist: slow neurons in the small circuit.** There the fly's connections with their real
   signs (connectome and weight shuffle) lose the least and end up ahead of both scrambled wirings
   (4.9 and 5.1 vs 3.0 and 3.4 at leak 0.5, 3.2 and 3.5 vs 1.3 and 1.6 at 0.2); shuffling the signs
-  puts the same connections last. It's the only setting in this project where the fly's wiring beats
-  random wiring on memory with readout noise, and it doesn't carry over to the whole brain.
+  puts the same connections last. With leaky neurons they tolerate gains of 4 to 6 before latching,
+  while the scrambled wirings do best near 1. It's the only setting in this project where the fly's
+  wiring beats random wiring on memory with readout noise; it doesn't carry over to the whole brain,
+  and on FlyWire only part of it holds (below).
+
+**A second fly: FlyWire (`configs/flywire_*.yaml`).** Everything so far uses one connectome, from
+one male fly. FlyWire's adult female brain differs in every way that could matter: another animal and
+sex, another reconstruction pipeline, another transmitter classifier, and no nerve cord (139,248
+neurons). It goes through the identical pipeline: same code, settings, seeds and 3,000-neuron growth
+rule.
+
+<p align="center">
+  <img src="docs/img/gain_sweep_flywire.png" width="820" alt="Memory capacity against gain for the connectome and four control wirings across FlyWire's whole female brain, with and without readout noise">
+</p>
+
+| best valid memory, readout noise (gain) | connectome | degree-preserving | weight shuffle | sign shuffle | Erdős–Rényi |
+|---|---|---|---|---|---|
+| male CNS, whole | **2.9** (1.25) | 22.8 (1) | 2.9 (1.1) | 3.1 (1) | 30.8 (8) |
+| FlyWire, whole brain | **3.0** (1.25) | 21.8 (1) | 3.1 (1.5) | 3.3 (1) | 72.4 (1.5) |
+| male CNS, 3,000 neurons | **6.7** (3) | 6.8 (12) | 7.4 (3) | 4.1 (1) | 7.2 (1) |
+| FlyWire, 3,000 neurons | **4.8** (2) | 21.2 (1) | 3.8 (1.5) | 11.8 (1) | 27.2 (1.25) |
+
+(3 seeds each.)
+
+- **Same knots, in the same order.** FlyWire's largest eigenvalue is again an antennal-lobe knot:
+  163 (against ~33 for its degree-preserving shuffle), 237 local and projection neurons. Next come the
+  optic lobe (159, 154), the central brain (115) and the central complex (78, 73). In the male CNS:
+  251, then 206, 178, 173, …, 116.
+- **Same whole-brain deficit.** At the standard gain only 1% of FlyWire's readouts move (79% in the
+  degree-preserving shuffle), and the fly's memory is 2.3 against 16.1; in the male CNS it was 2.2
+  against 16.1. At each wiring's best gain the fly reaches 3.0 against 22 and 72, and the three
+  wirings with the fly's connections end up at 3.0 to 3.3, as in the male CNS (2.9 to 3.1).
+- **The small-circuit tie doesn't replicate.** FlyWire's 3,000-neuron circuit, grown the same way
+  from its most-connected sensory neurons, leaves the fly 4–6× behind even at its best gain (4.8 vs
+  21 and 27). The tie was a property of the male CNS circuit, not of fly wiring.
+- **Where FlyWire differs.** Erdős–Rényi does much better (72 vs 31, with a large seed spread, ±23),
+  and in the small circuit shuffling the signs helps (11.8 vs the fly's 4.8), which it doesn't in the
+  male CNS.
+- **Robustness on FlyWire's small circuit.** Random input neurons leave the fly behind again (4.0
+  vs 27.5). The slow-neuron twist only half holds: at leak 0.5 the fly comes out ahead (11.4 vs 8.2),
+  but only at gains where its validity flips from one gain to the next (valid at 8 and 12, not at 4
+  and 6), and the weight shuffle, with the same connections, doesn't get there; at leak 0.2 the fly
+  is behind (2.1 vs 3.1). So that exception is fragile.
 
 So: biological wiring isn't a better reservoir, and at brain scale it's a clearly worse one, whether
-it gets one global gain, one per region or one per neuron, on both benchmarks, and with the input
-moved or the neurons slowed down.
+it gets one global gain, one per region or one per neuron, on both benchmarks, with the input moved
+or the neurons slowed down, and in two independent fly connectomes.
 
 ### Volatility: a question with an answer
 
@@ -496,6 +538,17 @@ python scripts/robustness.py --config configs/small.yaml    # random input neuro
 python scripts/report.py                                      # headline tables (results/small and results/full)
 ```
 
+The FlyWire replication uses its own configs, identical except for the connectome (~130 MB of data,
+from GitHub):
+
+```bash
+python scripts/download_data.py --source flywire
+python scripts/hot_spots.py --config configs/flywire_full.yaml
+python scripts/run_experiment.py --config configs/flywire_small.yaml
+python scripts/gain_sweep.py --config configs/flywire_small.yaml
+python scripts/gain_sweep.py --config configs/flywire_full.yaml --set reservoir.backend=torch
+```
+
 Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/` have the rest.
 `brain_activity.py` writes the heatmap and animations of the 2008 and COVID crashes to
 `results/small/brain/` (another window with `--window 2022-01-01 2022-10-31 --name 2022`; `--compare
@@ -620,14 +673,17 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 - The leaky variants keep the standard input scaling and readout noise. Retuning both for slow
   neurons could raise every wiring's memory; all wirings get the same setup, so the comparison stays
   paired.
-- One connectome, from one male fly. Whether the dense knots are a general feature of fly brains
-  would take a second one (e.g. FlyWire's female brain).
+- Two connectomes, both of single animals: a male CNS and a female brain. The FlyWire one has no
+  nerve cord, and its connectivity comes from the pair table published with Shiu et al. 2024 rather
+  than FlyWire's own release files. It has exactly the 2,700,513 connections of at least 5 synapses
+  that the FlyWire paper reports; the 84 that involve a neuron missing from the annotation table are
+  dropped.
 
 ## Repo layout
 
 ```
 src/flyres/
-  connectome.py   download, parse and cache the male CNS  (W[post, pre] = synapse count)
+  connectome.py   download, parse and cache the male CNS or FlyWire  (W[post, pre] = synapse count)
   subgraph.py     choose the reservoir neurons (grow from sensory neurons, top degree, or all)
   controls.py     null-model wirings
   reservoir.py    echo state network (numpy/scipy or torch)
@@ -650,7 +706,8 @@ src/flyres/
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
                   gain_sweep.py, hot_spots.py, region_gains.py, homeostasis.py, narma.py,
                   robustness.py, vol_forecast.py, report.py
-configs/          small.yaml (laptop), full.yaml (whole CNS), demo_synthetic.yaml (offline)
+configs/          small.yaml (laptop), full.yaml (whole CNS), flywire_small.yaml and
+                  flywire_full.yaml (the replication), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
 docs/img/         figures used in this README
 tests/            pytest suite (no downloads needed)
@@ -661,6 +718,12 @@ tests/            pytest suite (no downloads needed)
 - Male CNS v1.0 connectome: FlyEM (HHMI Janelia), University of Cambridge, MRC LMB and Google
   Research, <https://male-cns.janelia.org>, licensed CC-BY 4.0. Cite the dataset paper listed on
   the project site if you use it. The figures in `docs/img` are derived from it.
+- FlyWire connectome, release 783: FlyWire Consortium, licensed CC-BY 4.0. Dorkenwald et al. 2024,
+  *Neuronal wiring diagram of an adult brain*, Nature; annotations from Schlegel et al. 2024,
+  *Whole-brain annotation and multi-connectome cell typing of Drosophila*, Nature
+  ([flyconnectome/flywire_annotations](https://github.com/flyconnectome/flywire_annotations));
+  transmitter predictions from Eckstein et al. 2024, Cell; the per-pair connectivity table from
+  [philshiu/Drosophila_brain_model](https://github.com/philshiu/Drosophila_brain_model).
 - Sign rule: Shiu et al. 2024, *A Drosophila computational brain model reveals sensorimotor
   processing*, Nature.
 - Memory capacity: Jaeger 2001, *Short term memory in echo state networks*.

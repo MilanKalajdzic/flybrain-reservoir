@@ -19,7 +19,7 @@ class DataConfig:
 
 @dataclass
 class ConnectomeConfig:
-    source: str = "malecns"          # malecns | synthetic (fake graph, for offline runs)
+    source: str = "malecns"          # malecns | flywire (female brain, a replication) | synthetic (fake graph)
     min_weight: int = 5              # drop connections with fewer synapses (usual noise threshold)
     drop_autapses: bool = True
     inhibitory: list = field(default_factory=lambda: ["gaba", "glutamate", "histamine"])

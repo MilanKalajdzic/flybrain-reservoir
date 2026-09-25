@@ -1,6 +1,6 @@
 """Collect the headline numbers from finished runs into one short markdown report.
 
-    python scripts/report.py                       # results/small and results/full
+    python scripts/report.py                       # results/small, results/full (+ FlyWire runs)
     python scripts/report.py results/small results/rho05
 
 For each run folder: market metrics per model, memory per wiring (noise-free and with readout noise),
@@ -167,8 +167,12 @@ def run_report(folder: Path) -> list[str]:
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("folders", nargs="*", default=["results/small", "results/full"])
+    p.add_argument("folders", nargs="*", default=None,
+                   help="run folders (default: results/small and results/full, plus the FlyWire ones if run)")
     args = p.parse_args()
+    if not args.folders:
+        args.folders = ["results/small", "results/full"] + [f for f in ("results/flywire_small", "results/flywire_full")
+                                                            if Path(f).exists()]
     out = ["# flybrain-reservoir report", ""]
     for folder in args.folders:
         out += run_report(Path(folder))

@@ -1,15 +1,21 @@
-"""Download, parse and cache the male CNS v1.0 connectome.
+"""Download, parse and cache a fly connectome: the male CNS v1.0 (the main one) or FlyWire (a replication).
 
-Data: FlyEM (HHMI Janelia), University of Cambridge, MRC LMB and Google Research,
-https://male-cns.janelia.org, licensed CC-BY 4.0.
-
-Raw files (the "flat connectome" export):
+Male CNS: FlyEM (HHMI Janelia), University of Cambridge, MRC LMB and Google Research,
+https://male-cns.janelia.org, licensed CC-BY 4.0. Raw files (the "flat connectome" export):
     body-annotations-...feather        one row per body: bodyId, superclass, class, type, ...
     body-neurotransmitters-...feather  one row per body: body, consensus_nt, predicted_nt, ...
     connectome-weights-...feather      one row per connected body pair: body_pre, body_post, weight
-
 A "neuron" is a body with a superclass annotation (166,700 of them). Everything else in the
 weights table is an unproofread fragment and gets dropped.
+
+FlyWire: the adult female brain (FAFB), public release 783, 139,255 neurons, no nerve cord. FlyWire
+Consortium, CC-BY 4.0 (Dorkenwald et al. 2024, Schlegel et al. 2024). Two files, pinned to fixed commits:
+    neuron annotations (flyconnectome/flywire_annotations, Supplemental file 1): root_id, super_class,
+        cell_class, cell_type, top_nt (predicted transmitter), known_nt (from the literature), soma_x/y/z
+    connectivity (philshiu/Drosophila_brain_model, Connectivity_783.parquet, the table behind Shiu et al.
+        2024's brain model): one row per connected neuron pair with its synapse count
+Its annotations use their own words ("optic", "central", "ascending"); activity.neuron_group maps both
+vocabularies onto the same groups, so everything downstream runs unchanged.
 
 Convention used everywhere in this package: W[post, pre] = number of synapses from neuron
 `pre` onto neuron `post`, so `W @ x` is the input each neuron receives.
@@ -26,6 +32,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.ipc as ipc
+import pyarrow.parquet as pq
 import scipy.sparse as sp
 
 BASE_URL = "https://storage.googleapis.com/flyem-male-cns/v1.0/connectome-data/flat-connectome/"
@@ -36,6 +43,19 @@ FILES = {
 }
 ANNOTATION_COLUMNS = ["bodyId", "superclass", "class", "subclass", "type", "instance", "somaSide", "status"]
 NT_COLUMNS = ["body", "consensus_nt", "celltype_predicted_nt", "predicted_nt"]
+
+_GH = "https://raw.githubusercontent.com/"
+FLYWIRE_FILES = {  # key: (local file name, url pinned to a commit so the data can't change underneath)
+    "annotations": ("flywire_783_neuron_annotations.tsv", _GH + "flyconnectome/flywire_annotations/"
+                    "8587524c1748ce5ef2080822a2fc890fc03bf597/supplemental_files/"
+                    "Supplemental_file1_neuron_annotations.tsv"),  # ~32 MB
+    "connectivity": ("flywire_783_connectivity.parquet", _GH + "philshiu/Drosophila_brain_model/"
+                     "91bdd1e7dcf193f3e7ca5a8933497fcef63b7960/Connectivity_783.parquet"),  # ~100 MB
+}
+# FlyWire annotation columns -> the male CNS names used everywhere else
+FLYWIRE_COLUMNS = {"root_id": "bodyId", "super_class": "superclass", "cell_class": "class",
+                   "cell_sub_class": "subclass", "cell_type": "type", "side": "somaSide", "flow": "flow"}
+SOURCES = ("malecns", "flywire")
 
 # Sign rule from Shiu et al. 2024 (FlyWire whole-brain model): GABA and glutamate are
 # inhibitory, everything else excitatory. Histamine is inhibitory too (chloride channels in flies).
@@ -62,6 +82,20 @@ def canonical_nt(value) -> str | None:
     return None
 
 
+def known_nt(value) -> str | None:
+    """First classical transmitter named in FlyWire's `known_nt` field ("histamine; acetylcholine, histamine"
+    -> histamine), ignoring "-negative" results and neuropeptides. None if it names none."""
+    if not isinstance(value, str):
+        return None
+    for token in value.replace(";", ",").split(","):
+        token = token.strip().lower()
+        if token and not token.endswith("negative"):
+            nt = canonical_nt(token)
+            if nt is not None and token.startswith(nt[:3]):
+                return nt
+    return None
+
+
 def signs_from_nt(nt_labels, inhibitory=INHIBITORY) -> np.ndarray:
     """+1 (excitatory) / -1 (inhibitory) per neuron. Dale's law: one sign per presynaptic neuron."""
     inhib = {s.lower() for s in inhibitory}
@@ -70,19 +104,31 @@ def signs_from_nt(nt_labels, inhibitory=INHIBITORY) -> np.ndarray:
 
 # --------------------------------------------------------------------------- download
 
-def download(raw_dir: str | Path = "data/raw", which=None, force: bool = False) -> dict[str, Path]:
-    """Download the raw feather files (resumes interrupted downloads). Returns {key: path}."""
+def raw_files(source: str = "malecns") -> dict[str, tuple[str, str]]:
+    """{key: (local file name, url)} for a connectome source."""
+    if source == "malecns":
+        return {k: (name, BASE_URL + name) for k, name in FILES.items()}
+    if source == "flywire":
+        return dict(FLYWIRE_FILES)
+    raise ValueError(f"unknown connectome source {source!r}; choose from {SOURCES}")
+
+
+def download(raw_dir: str | Path = "data/raw", which=None, force: bool = False,
+             source: str = "malecns") -> dict[str, Path]:
+    """Download the raw files (resumes interrupted downloads). Returns {key: path}."""
     raw_dir = Path(raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
+    files = raw_files(source)
     paths = {}
-    for key in which or FILES:
-        dest = raw_dir / FILES[key]
+    for key in which or files:
+        name, url = files[key]
+        dest = raw_dir / name
         paths[key] = dest
         if dest.exists() and not force:
             print(f"already have {dest.name}")
             continue
         print(f"downloading {dest.name}")
-        _download_file(BASE_URL + FILES[key], dest)
+        _download_file(url, dest)
     return paths
 
 
@@ -188,6 +234,48 @@ def load_edges(weights_path: str | Path, body_ids, min_weight: int = 1, drop_aut
     return np.concatenate(pre_l), np.concatenate(post_l), np.concatenate(w_l)
 
 
+def load_flywire_neurons(raw_dir: str | Path) -> pd.DataFrame:
+    """FlyWire neuron table with the male CNS column names, sorted by bodyId (= FlyWire root_id).
+    Transmitter: the literature's (`known_nt`) where it names one, else the prediction (`top_nt`). That
+    fixes the classifier's known misses, e.g. Kenyon cells predicted dopaminergic (they're cholinergic)
+    and photoreceptors, which release histamine, a transmitter the classifier doesn't include."""
+    path = Path(raw_dir) / FLYWIRE_FILES["annotations"][0]
+    names = pd.read_csv(path, sep="\t", nrows=0).columns
+    missing = [c for c in ("root_id", "super_class", "top_nt") if c not in names]
+    if missing:
+        raise ValueError(f"{path.name} is missing columns {missing}; it has {list(names)}")
+    cols = [c for c in (*FLYWIRE_COLUMNS, "top_nt", "known_nt") if c in names]
+    ann = pd.read_csv(path, sep="\t", usecols=cols, dtype={"root_id": np.int64}, low_memory=False)
+    ann = ann[ann["super_class"].notna()].drop_duplicates("root_id")
+    known = ann["known_nt"].map(known_nt) if "known_nt" in ann.columns else pd.Series(None, index=ann.index)
+    predicted = ann["top_nt"].map(canonical_nt)
+    nt = known.where(known.notna(), predicted)
+    neurons = ann.rename(columns=FLYWIRE_COLUMNS).drop(columns=["top_nt", "known_nt"], errors="ignore")
+    neurons["nt"] = nt.fillna("unknown").to_numpy()
+    return neurons.sort_values("bodyId").reset_index(drop=True)
+
+
+def load_flywire_edges(path: str | Path, body_ids, min_weight: int = 1, drop_autapses: bool = True):
+    """(pre, post, weight) from FlyWire's pair table, as row indices into the sorted `body_ids`."""
+    body_ids = np.asarray(body_ids, dtype=np.int64)
+    n = len(body_ids)
+    names = pq.read_schema(path).names
+    cols = ("Presynaptic_ID", "Postsynaptic_ID", "Connectivity")
+    missing = [c for c in cols if c not in names]
+    if missing:
+        raise ValueError(f"{Path(path).name} is missing columns {missing}; it has {names}")
+    t = pd.read_parquet(path, columns=list(cols))
+    pre = t["Presynaptic_ID"].to_numpy(np.int64)
+    post = t["Postsynaptic_ID"].to_numpy(np.int64)
+    w = t["Connectivity"].to_numpy()
+    ip = np.minimum(np.searchsorted(body_ids, pre), n - 1)
+    iq = np.minimum(np.searchsorted(body_ids, post), n - 1)
+    keep = (w >= min_weight) & (body_ids[ip] == pre) & (body_ids[iq] == post)
+    if drop_autapses:
+        keep &= ip != iq
+    return ip[keep].astype(np.int32), iq[keep].astype(np.int32), w[keep].astype(np.float32)
+
+
 # --------------------------------------------------------------------------- cache
 
 @dataclass
@@ -240,27 +328,37 @@ def with_degree_columns(neurons: pd.DataFrame, W: sp.csr_matrix) -> pd.DataFrame
     return neurons
 
 
-def cache_stem(min_weight: int, drop_autapses: bool = True) -> str:
-    return f"malecns_v1.0_w{min_weight}" + ("" if drop_autapses else "_autapses")
+def cache_stem(min_weight: int, drop_autapses: bool = True, source: str = "malecns") -> str:
+    base = {"malecns": "malecns_v1.0", "flywire": "flywire_783"}[source]
+    return f"{base}_w{min_weight}" + ("" if drop_autapses else "_autapses")
 
 
 def build_cache(raw_dir: str | Path = "data/raw", cache_dir: str | Path = "data/cache", min_weight: int = 5,
-                drop_autapses: bool = True, verbose: bool = True) -> Connectome:
-    """Raw feather files -> sparse matrix + neuron table on disk. Takes a few minutes for the full file."""
+                drop_autapses: bool = True, verbose: bool = True, source: str = "malecns") -> Connectome:
+    """Raw files -> sparse matrix + neuron table on disk. Takes a few minutes for the full male CNS file."""
     raw_dir = Path(raw_dir)
-    missing = [name for name in FILES.values() if not (raw_dir / name).exists()]
+    missing = [name for name, _ in raw_files(source).values() if not (raw_dir / name).exists()]
     if missing:
-        raise FileNotFoundError(f"missing raw files in {raw_dir}: {missing}. Run scripts/download_data.py first.")
-    neurons = load_neurons(raw_dir)
-    if verbose:
-        print(f"neurons: {len(neurons):,}")
-    pre, post, w = load_edges(raw_dir / FILES["weights"], neurons["bodyId"].to_numpy(), min_weight,
-                              drop_autapses, verbose)
+        flag = "" if source == "malecns" else f" --source {source}"
+        raise FileNotFoundError(f"missing raw files in {raw_dir}: {missing}. "
+                                f"Run scripts/download_data.py{flag} first.")
+    if source == "flywire":
+        neurons = load_flywire_neurons(raw_dir)
+        if verbose:
+            print(f"neurons: {len(neurons):,}")
+        pre, post, w = load_flywire_edges(raw_dir / FLYWIRE_FILES["connectivity"][0], neurons["bodyId"].to_numpy(),
+                                          min_weight, drop_autapses)
+    else:
+        neurons = load_neurons(raw_dir)
+        if verbose:
+            print(f"neurons: {len(neurons):,}")
+        pre, post, w = load_edges(raw_dir / FILES["weights"], neurons["bodyId"].to_numpy(), min_weight,
+                                  drop_autapses, verbose)
     n = len(neurons)
     W = sp.csr_matrix((w, (post, pre)), shape=(n, n), dtype=np.float32)
     W.sum_duplicates()
     conn = Connectome(W, with_degree_columns(neurons, W))
-    conn.save(cache_dir, cache_stem(min_weight, drop_autapses))
+    conn.save(cache_dir, cache_stem(min_weight, drop_autapses, source))
     if verbose:
         d = conn.describe()
         print(f"edges (>= {min_weight} synapses): {d['edges']:,}   synapses: {d['synapses']:,}   "
@@ -270,9 +368,9 @@ def build_cache(raw_dir: str | Path = "data/raw", cache_dir: str | Path = "data/
 
 
 def load_connectome(raw_dir: str | Path = "data/raw", cache_dir: str | Path = "data/cache", min_weight: int = 5,
-                    drop_autapses: bool = True, verbose: bool = True) -> Connectome:
+                    drop_autapses: bool = True, verbose: bool = True, source: str = "malecns") -> Connectome:
     """Load the cached graph, building it from the raw files on first use."""
-    stem = cache_stem(min_weight, drop_autapses)
+    stem = cache_stem(min_weight, drop_autapses, source)
     if (Path(cache_dir) / f"{stem}.npz").exists():
         return Connectome.load(cache_dir, stem)
-    return build_cache(raw_dir, cache_dir, min_weight, drop_autapses, verbose)
+    return build_cache(raw_dir, cache_dir, min_weight, drop_autapses, verbose, source)

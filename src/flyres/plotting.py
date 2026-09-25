@@ -437,7 +437,7 @@ def animate_brain_pair(glows: list, xy: np.ndarray, input_idx, close: pd.Series,
 
 
 def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", noise: float | None = None,
-                    path=None):
+                    path=None, title: str = "Memory capacity at each gain"):
     """Memory capacity against gain, one line per wiring (mean over seeds). With readout-noise results,
     two panels on the same y scale: with noise (left) and noise-free (right).
     Filled markers = valid reservoir, hollow = some readouts latch or go chaotic."""
@@ -468,7 +468,7 @@ def plot_gain_sweep(summary: pd.DataFrame, gain_label: str = "spectral radius", 
         ax.set_title(title, loc="left", fontsize=9.5, color=INK_2)
     axes[0].set_ylim(bottom=0)
     axes[0].set_ylabel("memory capacity")
-    fig.suptitle("Memory capacity at each gain", x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.04)
+    fig.suptitle(title, x=0.01, ha="left", fontsize=11, fontweight="bold", color=INK, y=1.04)
     fig.text(0.01, 0.975, "Mean over seeds. Hollow = invalid reservoir (some neurons latch or go chaotic).",
              ha="left", fontsize=8.5, color=INK_2)
     _legend(axes[-1], loc="upper left", bbox_to_anchor=(1.02, 1.0))

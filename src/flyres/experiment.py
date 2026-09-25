@@ -20,7 +20,7 @@ from scipy import stats
 
 from .benchmarks import memory_capacities, readout_stability
 from .config import ExperimentConfig, save_config
-from .connectome import load_connectome
+from .connectome import SOURCES, load_connectome
 from .controls import WIRINGS, make_wiring
 from .market import Dataset, download_prices, load_prices_csv, make_dataset
 from .metrics import block_bootstrap_sharpe_diff, evaluate, strategy_returns
@@ -54,7 +54,9 @@ def subgraph_cache_path(cfg: ExperimentConfig) -> Path:
                       "direction": sc.direction, "min_weight": cc.min_weight, "autapses": cc.drop_autapses,
                       "inhibitory": sorted(cc.inhibitory)}, sort_keys=True)
     digest = hashlib.md5(key.encode()).hexdigest()[:8]
-    return Path(cfg.data.cache_dir) / "subgraphs" / f"{sc.method}_n{sc.n_neurons}_w{cc.min_weight}_{digest}"
+    prefix = "" if cc.source == "malecns" else f"{cc.source}_"  # male CNS names stay as they were
+    name = f"{prefix}{sc.method}_n{sc.n_neurons}_w{cc.min_weight}_{digest}"
+    return Path(cfg.data.cache_dir) / "subgraphs" / name
 
 
 def prepare_subgraph(cfg: ExperimentConfig, verbose: bool = True) -> Subgraph:
@@ -63,14 +65,15 @@ def prepare_subgraph(cfg: ExperimentConfig, verbose: bool = True) -> Subgraph:
                 direction=sc.direction, inhibitory=cc.inhibitory, verbose=verbose)
     if cc.source == "synthetic":
         return select_subgraph(synthetic_connectome(n=cc.synthetic_n, seed=0), **args)
-    if cc.source != "malecns":
-        raise ValueError("connectome.source must be 'malecns' or 'synthetic'")
+    if cc.source not in SOURCES:
+        raise ValueError(f"connectome.source must be one of {SOURCES} or 'synthetic'")
     path = subgraph_cache_path(cfg)
     if Subgraph.exists(path):
         if verbose:
             print(f"subgraph: using cached {path.name}")
         return Subgraph.load(path)
-    conn = load_connectome(cfg.data.raw_dir, cfg.data.cache_dir, cc.min_weight, cc.drop_autapses, verbose)
+    conn = load_connectome(cfg.data.raw_dir, cfg.data.cache_dir, cc.min_weight, cc.drop_autapses, verbose,
+                           source=cc.source)
     sub = select_subgraph(conn, **args)
     sub.save(path)
     return sub

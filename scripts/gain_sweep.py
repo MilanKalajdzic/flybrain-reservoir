@@ -5,7 +5,7 @@
 
 Uses the config's subgraph, wirings, seeds, reservoir and memory settings; only the gain changes.
 Output in results/<name>/gain_sweep/: summary.md (start here), sweep.csv (every run),
-grid.csv (mean per wiring and gain), gain_sweep.png.
+grid.csv (mean per wiring and gain), gain_sweep.png. --replot redraws them from sweep.csv.
 """
 import argparse
 import warnings
@@ -16,6 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
+import pandas as pd  # noqa: E402
 
 from flyres import plotting  # noqa: E402
 from flyres.config import load_config, save_config  # noqa: E402
@@ -34,6 +35,7 @@ def main():
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2],
                    help="seeds (default 0 1 2; fewer than the main experiment because it multiplies by the gains)")
     p.add_argument("--quiet", action="store_true")
+    p.add_argument("--replot", action="store_true", help="redraw summary and figure from sweep.csv")
     args = p.parse_args()
 
     cfg = load_config(args.config, args.set)
@@ -41,7 +43,7 @@ def main():
     out = Path(cfg.output_dir) / cfg.name / "gain_sweep"
     out.mkdir(parents=True, exist_ok=True)
 
-    df = run_gain_sweep(cfg, args.gains, verbose=not args.quiet)
+    df = pd.read_csv(out / "sweep.csv") if args.replot else run_gain_sweep(cfg, args.gains, verbose=not args.quiet)
     summary = summarize_sweep(df)
     best = best_valid(summary)
     df.to_csv(out / "sweep.csv", index=False)
@@ -49,7 +51,9 @@ def main():
     save_config(cfg, out / "config_used.yaml")
     (out / "summary.md").write_text(sweep_markdown(cfg, summary, best), encoding="utf-8")
     label = "spectral radius" if cfg.reservoir.normalize == "spectral" else "bulk scale (frobenius)"
-    plt.close(plotting.plot_gain_sweep(summary, label, noise=cfg.memory.readout_noise, path=out / "gain_sweep.png"))
+    title = "Memory capacity at each gain" + (", FlyWire (female brain)" if cfg.connectome.source == "flywire" else "")
+    plt.close(plotting.plot_gain_sweep(summary, label, noise=cfg.memory.readout_noise, path=out / "gain_sweep.png",
+                                       title=title))
     print(best.to_string(index=False))
     print(f"open {out / 'summary.md'}")
 

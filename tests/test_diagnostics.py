@@ -149,6 +149,11 @@ def test_scripts_run(tmp_path, script, args, produced):
     run = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     assert run.returncode == 0, run.stderr[-2000:]
     assert (tmp_path / "t" / produced).exists()
+    if script == "gain_sweep.py":  # --replot redraws from sweep.csv without running anything
+        (tmp_path / "t" / "gain_sweep" / "gain_sweep.png").unlink()
+        replot = subprocess.run(cmd + ["--replot"], capture_output=True, text=True, timeout=300)
+        assert replot.returncode == 0, replot.stderr[-2000:]
+        assert (tmp_path / "t" / "gain_sweep" / "gain_sweep.png").exists() and "gain sweep:" not in replot.stdout
 
 
 def test_readout_noise_removes_memory_hidden_in_tiny_fluctuations(sub):

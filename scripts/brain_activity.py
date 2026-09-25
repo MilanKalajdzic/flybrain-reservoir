@@ -28,7 +28,7 @@ import pandas as pd  # noqa: E402
 
 from flyres import activity, plotting  # noqa: E402
 from flyres.config import load_config  # noqa: E402
-from flyres.connectome import FILES  # noqa: E402
+from flyres.connectome import SOURCES  # noqa: E402
 from flyres.controls import WIRINGS  # noqa: E402
 from flyres.experiment import build_matrix, load_closes, market_reservoir, prepare_subgraph  # noqa: E402
 from flyres.market import make_dataset  # noqa: E402
@@ -47,6 +47,8 @@ WIRING_TEXT = {  # (title start, how the neurons are wired, short name, how, for
                     "Wired completely at random", "same number of connections, nothing else kept"),
 }
 DRAWN = "Only neurons whose activity varies by more than 0.1% of its maximum are drawn"
+CONNECTOMES = {"malecns": "the male CNS connectome", "flywire": "the FlyWire connectome (female brain)",
+               "synthetic": "a synthetic test graph"}
 
 
 def save_activity(path: Path, dev, glow: dict, moving, windows: dict) -> None:
@@ -93,6 +95,8 @@ def main():
         p.error("--compare needs a different wiring than --wiring")
 
     cfg = load_config(args.config, args.set)
+    connectome = CONNECTOMES.get(cfg.connectome.source, "the connectome")
+    text = {w: tuple(t.replace("the male CNS connectome", connectome) for t in v) for w, v in WIRING_TEXT.items()}
     out = Path(args.out or Path(cfg.output_dir) / cfg.name / "brain")
     out.mkdir(parents=True, exist_ok=True)
     windows = {args.name: tuple(args.window)} if args.window else WINDOWS
@@ -131,23 +135,23 @@ def main():
         dev.to_csv(out / f"group_deviation_monthly{suffix(wiring)}.csv")
         heat = out / f"activity_heatmap{suffix(wiring)}.png"
         title = ("How stirred up each part of the fly circuit is" if wiring == "connectome"
-                 else f"How stirred up each part of the circuit is ({WIRING_TEXT[wiring][2].lower()})")
+                 else f"How stirred up each part of the circuit is ({text[wiring][2].lower()})")
         plt.close(plotting.plot_activity_heatmap(dev, close, activity.EPISODES, ticker=ticker, path=heat,
                                                  share=activity.moving_share(groups, moving), title=title))
         print(f"wrote {heat}")
 
-    raw = Path(cfg.data.raw_dir)
-    if cfg.connectome.source != "malecns" or not (raw / FILES["annotations"]).exists():
+    raw, source = Path(cfg.data.raw_dir), cfg.connectome.source
+    if source not in SOURCES or not activity.annotation_file(raw, source).exists():
         print("skipping the animation: needs the real annotation file (scripts/download_data.py)")
         return
-    xyz = activity.soma_positions(raw, sub.neurons["bodyId"])
-    background = activity.all_soma_positions(raw)
+    xyz = activity.soma_positions(raw, sub.neurons["bodyId"], source)
+    background = activity.all_soma_positions(raw, source)
 
     def crash(name, window):
         return f"the {name} crash" if name in WINDOWS and tuple(window) == WINDOWS[name] else name
 
     for wiring, (_, glow, moving, wins) in runs.items():
-        start, what, *_ = WIRING_TEXT[wiring]
+        start, what, *_ = text[wiring]
         subtitle = (f"{sub.n:,} neurons {what}, driven by {ticker} returns and volatility. "
                     f"Brighter = further from normal.\n{DRAWN}: {moving.mean():.0%} of them.")
         for name, window in wins.items():
@@ -162,7 +166,7 @@ def main():
 
     if args.compare:
         (_, glow_a, moving_a, wins_a), (_, glow_b, moving_b, wins_b) = runs[args.wiring], runs[args.compare]
-        labels = [(WIRING_TEXT[w][2], f"{WIRING_TEXT[w][3][0].upper() + WIRING_TEXT[w][3][1:]}. "
+        labels = [(text[w][2], f"{text[w][3][0].upper() + text[w][3][1:]}. "
                       f"{m.sum():,} neurons move ({m.mean():.0%}).")
                   for w, m in ((args.wiring, moving_a), (args.compare, moving_b))]
         subtitle = (f"Driven by {ticker} returns and volatility. Brighter = further from normal.\n"

@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .connectome import FILES
+from .connectome import FILES, FLYWIRE_FILES
 
 INPUT_GROUP = "Input neurons (market enters here)"
 GROUP_ORDER = [
@@ -33,7 +33,9 @@ EPISODES = {
 
 
 def neuron_group(superclass, cls) -> str:
-    """Readable pathway stage from the connectome's superclass/class annotations."""
+    """Readable pathway stage from the connectome's superclass/class annotations. Understands both the male
+    CNS labels (cb_intrinsic, ol_intrinsic, descending_neuron, ...) and FlyWire's (central, optic,
+    descending, ...); cell classes (ALPN, Kenyon_Cell, CX, olfactory, ...) are shared."""
     s = superclass.lower() if isinstance(superclass, str) else ""
     c = cls.lower() if isinstance(cls, str) else ""
     if "sensory" in s:
@@ -52,17 +54,17 @@ def neuron_group(superclass, cls) -> str:
         return "Mushroom body (learning)"
     if c == "cx":
         return "Central complex (navigation)"
-    if s == "descending_neuron":
+    if s in ("descending_neuron", "descending"):
         return "Descending (brain to body)"
-    if s == "ascending_neuron":
+    if s in ("ascending_neuron", "ascending"):
         return "Ascending (body to brain)"
     if "motor" in s:
         return "Motor neurons"
-    if s.startswith(("visual", "ol_")):
+    if s.startswith(("visual", "ol_", "optic")):
         return "Visual"
     if s.startswith("vnc"):
         return "Nerve cord"
-    if s.startswith("cb"):
+    if s.startswith("cb") or s == "central":
         return "Other central brain"
     return "Other"
 
@@ -79,9 +81,10 @@ def neuron_groups(neurons: pd.DataFrame, input_idx, min_size: int = 8) -> pd.Ser
     return groups.replace(fold)
 
 
-# A neuron counts as moving if its activity varies by at least this much (0.1% of its maximum, tanh activity runs from -1 to 1), the
-# same bar as the readout noise and "active readouts" in the benchmarks. Below it, z-scoring would blow
-# fluctuations of a millionth up to full size and light up neurons that carry nothing usable.
+# A neuron counts as moving if its activity varies by at least this much (0.1% of its maximum: tanh activity
+# runs from -1 to 1), the same bar as the readout noise and "active readouts" in the benchmarks. Below it,
+# z-scoring would blow fluctuations of a millionth up to full size and light up neurons that carry nothing
+# usable.
 MOVE_THRESHOLD = 1e-3
 
 
@@ -155,14 +158,31 @@ def stream_activity(reservoir, X: np.ndarray, washout: int, dates, groups: pd.Se
     return dev, glow, moving
 
 
-def soma_positions(raw_dir: str | Path, body_ids) -> np.ndarray:
-    """(n, 3) soma coordinates (8 nm voxels) for the given neurons, NaN where unknown.
+def annotation_file(raw_dir: str | Path, source: str = "malecns") -> Path:
+    """The raw annotation file that holds soma positions for a connectome source."""
+    name = FLYWIRE_FILES["annotations"][0] if source == "flywire" else FILES["annotations"]
+    return Path(raw_dir) / name
+
+
+def _flywire_somata(raw_dir: str | Path) -> pd.DataFrame:
+    """FlyWire soma positions in nm (the file stores 4 x 4 x 40 nm voxels), one row per neuron."""
+    ann = pd.read_csv(annotation_file(raw_dir, "flywire"), sep="\t", usecols=["root_id", "soma_x", "soma_y", "soma_z"],
+                      dtype={"root_id": np.int64}, low_memory=False)
+    xyz = ann[["soma_x", "soma_y", "soma_z"]].to_numpy(np.float64) * np.array([4.0, 4.0, 40.0])
+    return pd.DataFrame(xyz, index=ann["root_id"].to_numpy(), columns=["x", "y", "z"])
+
+
+def soma_positions(raw_dir: str | Path, body_ids, source: str = "malecns") -> np.ndarray:
+    """(n, 3) soma coordinates for the given neurons (male CNS: 8 nm voxels; FlyWire: nm), NaN where unknown.
 
     Sensory neurons have their cell bodies outside the imaged CNS (antennae, legs), so they have none.
-    Falls back to `tosomaLocation`, a point on the neurite pointing toward the soma.
+    The male CNS falls back to `tosomaLocation`, a point on the neurite pointing toward the soma.
     """
-    path = Path(raw_dir) / FILES["annotations"]
-    ann = pd.read_feather(path, columns=["bodyId", "somaLocation", "tosomaLocation"])
+    if source == "flywire":
+        somata = _flywire_somata(raw_dir)
+        somata = somata[~somata.index.duplicated()]
+        return somata.reindex(np.asarray(body_ids, dtype=np.int64)).to_numpy(np.float64)
+    ann = pd.read_feather(annotation_file(raw_dir), columns=["bodyId", "somaLocation", "tosomaLocation"])
     ann["bodyId"] = ann["bodyId"].astype(np.int64)
 
     def ok(v):
@@ -173,10 +193,12 @@ def soma_positions(raw_dir: str | Path, body_ids) -> np.ndarray:
     return np.array([lookup.get(int(b), (np.nan,) * 3) for b in body_ids], dtype=np.float64)
 
 
-def all_soma_positions(raw_dir: str | Path) -> np.ndarray:
-    """Soma coordinates of every neuron in the CNS (for drawing the brain's outline)."""
-    path = Path(raw_dir) / FILES["annotations"]
-    ann = pd.read_feather(path, columns=["superclass", "somaLocation"])
+def all_soma_positions(raw_dir: str | Path, source: str = "malecns") -> np.ndarray:
+    """Soma coordinates of every neuron (for drawing the brain's outline)."""
+    if source == "flywire":
+        xyz = _flywire_somata(raw_dir).to_numpy()
+        return xyz[np.isfinite(xyz).all(axis=1)]
+    ann = pd.read_feather(annotation_file(raw_dir), columns=["superclass", "somaLocation"])
     locs = [v for s, v in zip(ann["superclass"], ann["somaLocation"])
             if isinstance(s, str) and v is not None and not isinstance(v, float) and len(v) == 3]
     return np.array(locs, dtype=np.float64)

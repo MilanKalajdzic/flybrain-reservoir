@@ -13,7 +13,7 @@ import pyarrow as pa
 import pyarrow.feather as feather
 import scipy.sparse as sp
 
-from .connectome import FILES, Connectome, with_degree_columns
+from .connectome import FILES, FLYWIRE_FILES, Connectome, with_degree_columns
 
 
 def synthetic_connectome(n: int = 2000, mean_degree: float = 25.0, frac_inhibitory: float = 0.25,
@@ -101,6 +101,45 @@ def write_mock_raw_files(conn: Connectome, raw_dir: str | Path, n_fragments: int
     edges = pa.table({"body_pre": pre.astype(np.uint64), "body_post": post.astype(np.uint64),
                       "weight": w.astype(np.int64)})
     feather.write_feather(edges, raw_dir / FILES["weights"], chunksize=batch_rows)
+
+
+def write_mock_flywire_files(conn: Connectome, raw_dir: str | Path, seed: int = 0) -> None:
+    """Write FlyWire-shaped files (annotation TSV + pair parquet) for `conn`, with the real column names and
+    the quirks the loader must handle: FlyWire's vocabulary, wrong predicted transmitters that `known_nt`
+    corrects, extra pairs with unknown neurons, autapses, and no soma for sensory neurons."""
+    rng = np.random.default_rng(seed)
+    raw_dir = Path(raw_dir)
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    nb = conn.neurons
+    root = (720575940600000000 + nb["bodyId"].to_numpy()).astype(np.int64)  # FlyWire-sized ids
+    vocab = {"cb_intrinsic": "central", "descending_neuron": "descending", "sensory": "sensory"}
+    labels = nb["nt"].to_numpy().astype(object)
+    wrong = rng.random(len(labels)) < 0.3  # the classifier gets these wrong; the literature knows better
+    top = np.where(wrong, "dopamine", labels)
+    known = np.where(wrong, [f"{nt}; sNPF, {nt}" for nt in labels],
+                     np.where(rng.random(len(labels)) < 0.2, "gaba-negative", None))
+    sensory = (nb["superclass"] == "sensory").to_numpy()
+    xyz = rng.integers(1000, 90000, size=(len(nb), 3)).astype(float)
+    xyz[sensory] = np.nan
+    ann = pd.DataFrame({
+        "supervoxel_id": rng.integers(10**16, 10**17, len(nb)), "root_id": root,
+        "soma_x": xyz[:, 0], "soma_y": xyz[:, 1], "soma_z": xyz[:, 2], "flow": "intrinsic",
+        "super_class": [vocab.get(k, k) for k in nb["superclass"]], "cell_class": nb["class"],
+        "cell_sub_class": None, "cell_type": nb["type"], "top_nt": top, "top_nt_conf": rng.random(len(nb)),
+        "known_nt": known, "side": rng.choice(["left", "right"], len(nb)),
+    }).sample(frac=1.0, random_state=seed)  # not sorted, like the real file
+    ann.to_csv(raw_dir / FLYWIRE_FILES["annotations"][0], sep="\t", index=False)
+
+    coo = conn.W.tocoo()
+    pre, post, w = root[coo.col], root[coo.row], coo.data.astype(np.int64)
+    k = 200
+    stranger = rng.integers(10**17, 2 * 10**17, k)  # neurons not in the annotation table
+    pre = np.concatenate([pre, stranger, root[:k]])
+    post = np.concatenate([post, rng.choice(root, k), root[:k]])  # the last k are autapses
+    w = np.concatenate([w, rng.integers(1, 20, k), rng.integers(1, 20, k)])
+    pd.DataFrame({"Presynaptic_ID": pre, "Postsynaptic_ID": post, "Presynaptic_Index": 0, "Postsynaptic_Index": 0,
+                  "Connectivity": w, "Excitatory": 1, "Excitatory x Connectivity": w}).to_parquet(
+        raw_dir / FLYWIRE_FILES["connectivity"][0], index=False)
 
 
 def synthetic_prices(n_days: int = 5000, predictability: float = 0.0, seed: int = 0,
