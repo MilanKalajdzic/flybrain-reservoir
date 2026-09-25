@@ -64,3 +64,16 @@ def test_graph_stats_on_known_graph():
     assert s["edges"] == 3
     assert s["reciprocity"] == pytest.approx(2 / 3)
     assert s["largest_scc_frac"] == pytest.approx(2 / 3)
+
+
+def test_growth_breaks_ties_by_index():
+    """Scores are synapse counts, so ties are common. They must be broken the same way on every machine
+    (np.argpartition doesn't: it depended on the numpy version and the CPU), so the circuit is reproducible."""
+    from flyres.subgraph import _grow
+
+    n = 12
+    W = sp.lil_matrix((n, n), dtype=np.float32)
+    for j in range(1, n):  # neuron 0 sends one synapse to every other neuron: all tie
+        W[j, 0] = 1.0
+    grown = _grow(sp.csr_matrix(W), np.array([0]), 4, n_steps=1)
+    np.testing.assert_array_equal(grown, [0, 1, 2, 3])

@@ -154,7 +154,9 @@ def _grow(W: sp.csr_matrix, seeds: np.ndarray, n_neurons: int, direction: str = 
     while count < n_neurons:
         cand = np.where(selected, -np.inf, score)
         k = min(step, n_neurons - count)
-        top = np.argpartition(-cand, k - 1)[:k]
+        # a stable sort breaks ties (common: scores are synapse counts) by neuron index; argpartition
+        # breaks them differently across numpy versions and CPUs, so the circuit wasn't reproducible
+        top = np.argsort(-cand, kind="stable")[:k]
         top = top[cand[top] > 0]
         if len(top) == 0:
             warnings.warn(f"ran out of connected neurons at {count} (asked for {n_neurons})")

@@ -50,9 +50,12 @@ class ExperimentResult:
 
 def subgraph_cache_path(cfg: ExperimentConfig) -> Path:
     sc, cc = cfg.subgraph, cfg.connectome
-    key = json.dumps({"method": sc.method, "n": sc.n_neurons, "inputs": sc.n_inputs, "filter": sc.input_filter,
-                      "direction": sc.direction, "min_weight": cc.min_weight, "autapses": cc.drop_autapses,
-                      "inhibitory": sorted(cc.inhibitory)}, sort_keys=True)
+    spec = {"method": sc.method, "n": sc.n_neurons, "inputs": sc.n_inputs, "filter": sc.input_filter,
+            "direction": sc.direction, "min_weight": cc.min_weight, "autapses": cc.drop_autapses,
+            "inhibitory": sorted(cc.inhibitory)}
+    if sc.method == "grow":  # growth now breaks ties the same way on every machine; don't reuse older circuits
+        spec["growth"] = "stable"
+    key = json.dumps(spec, sort_keys=True)
     digest = hashlib.md5(key.encode()).hexdigest()[:8]
     prefix = "" if cc.source == "malecns" else f"{cc.source}_"  # male CNS names stay as they were
     name = f"{prefix}{sc.method}_n{sc.n_neurons}_w{cc.min_weight}_{digest}"
