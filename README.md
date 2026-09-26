@@ -603,7 +603,8 @@ writes `results/small/robustness/`; `--variants` picks which checks to run. `gai
 `region_gains.py`, `homeostasis.py`, `narma.py` and `robustness.py` also take `--replot`, which
 redraws the summary and figure from the saved CSVs without running anything.
 `notebooks/01_connectome_tour.ipynb` explores the graph and its eigenvalue spectrum,
-`notebooks/02_results.ipynb` runs and plots an experiment.
+`notebooks/02_results.ipynb` runs and plots an experiment; `python scripts/run_notebooks.py` reruns
+both in place, so their saved outputs match your data.
 
 Override anything from the command line:
 
@@ -748,7 +749,7 @@ src/flyres/
   synthetic.py    fake data for tests and the offline demo
 scripts/          download_data.py, build_connectome.py, run_experiment.py, brain_activity.py,
                   gain_sweep.py, hot_spots.py, region_gains.py, homeostasis.py, narma.py,
-                  robustness.py, vol_forecast.py, report.py, scoreboard.py
+                  robustness.py, vol_forecast.py, report.py, scoreboard.py, run_notebooks.py
 configs/          small.yaml (laptop), full.yaml (whole CNS), flywire_small.yaml and
                   flywire_full.yaml (the replication), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
