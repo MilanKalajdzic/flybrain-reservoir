@@ -75,7 +75,7 @@ seeds, including ones where the fly latches.*
 
 No edge at either scale, and the wiring doesn't matter. Every reservoir has an IC around 0.015 (t ≈
 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe of 0.42 to
-0.50 against 0.59 for buy & hold. None of the connectome-vs-control differences is larger than the
+0.51 against 0.59 for buy & hold. None of the connectome-vs-control differences is larger than the
 noise (the standard error of an 18½-year Sharpe is about 0.23). The equity curve's early lead over
 buy & hold comes entirely from sidestepping 2008.
 
