@@ -201,7 +201,8 @@ def narma_markdown(cfg: ExperimentConfig, grid: pd.DataFrame, best: pd.DataFrame
     noise = cfg.memory.readout_noise
     lines = [f"# NARMA-10: {cfg.name}", "",
              f"NRMSE on the last {N_TEST} of {N_STEPS} steps (lower is better; 1 = predicting the mean). Readout on "
-             f"u(t) and the reservoir state, ridge penalty picked on the end of the training window. "
+             f"u(t) and the recorded neurons one step later, once u(t) has reached them, ridge penalty picked on "
+             f"the end of the training window. "
              f"{len(cfg.seeds)} seed(s); a gain is valid when at most {STABLE_MAX_UNSTABLE:.0%} of readouts are unstable "
              f"in each of {cfg.memory.stability_tests} latching tests, for every seed.", ""]
     if noisy:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flybrain-reservoir"
-version = "1.0.0"
+version = "1.0.1"
 description = "Reservoir computing on fruit fly connectomes (male CNS, replicated on FlyWire), tested against random-wiring controls on market data."
 readme = "README.md"
 requires-python = ">=3.10"

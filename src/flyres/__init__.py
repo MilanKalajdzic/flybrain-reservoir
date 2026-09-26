@@ -4,4 +4,4 @@ Pipeline: connectome -> subgraph -> (real or control) wiring -> echo state netwo
 -> ridge readout -> walk-forward evaluation on market data.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

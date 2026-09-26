@@ -11,7 +11,7 @@ abstract: >-
 authors:
   - given-names: Milan
     family-names: Kalajdzic
-version: 1.0.0
+version: 1.0.1
 date-released: 2026-09-26
 license: MIT
 repository-code: "https://github.com/MilanKalajdzic/flybrain-reservoir"
