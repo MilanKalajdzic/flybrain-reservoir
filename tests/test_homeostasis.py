@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
 import scipy.sparse as sp
 
 from flyres.config import load_config

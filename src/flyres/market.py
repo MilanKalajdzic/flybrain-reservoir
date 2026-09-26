@@ -30,10 +30,12 @@ def download_prices(tickers, start: str = "2003-01-01", end: str | None = None, 
     """Adjusted close prices from Yahoo Finance (cached as parquet). Columns = tickers.
 
     `end` is inclusive (yfinance's own `end` isn't, so it gets the day after). With end=None the data
-    runs to the latest close and every rerun shifts slightly; the configs pin an end date instead.
+    runs to the latest close, cached for the day, so a rerun on a later day shifts slightly; the configs
+    pin an end date instead.
     """
     tickers = [tickers] if isinstance(tickers, str) else list(tickers)
-    cache = Path(cache_dir) / f"prices_{'_'.join(tickers)}_{start}_{end or 'latest'}.parquet"
+    stamp = end or f"latest-{pd.Timestamp.today():%Y-%m-%d}"  # an open-ended download is only reused the same day
+    cache = Path(cache_dir) / f"prices_{'_'.join(tickers)}_{start}_{stamp}.parquet"
     if cache.exists() and not refresh:
         return pd.read_parquet(cache).loc[start:end]
     import yfinance as yf

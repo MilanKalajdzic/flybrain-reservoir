@@ -46,6 +46,8 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     if args.replot:
         df = pd.read_csv(out / "runs.csv")
+        if (out / "config_used.yaml").exists():  # the settings the checks ran with, not today's command line
+            cfg = load_config(out / "config_used.yaml")
     else:
         df = run_robustness(cfg, args.variants, args.gains, verbose=not args.quiet)
         df.to_csv(out / "runs.csv", index=False)

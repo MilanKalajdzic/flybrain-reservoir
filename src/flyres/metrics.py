@@ -59,7 +59,7 @@ def max_drawdown(r: np.ndarray) -> float:
     r = r[np.isfinite(r)]
     if len(r) == 0:
         return float("nan")
-    wealth = np.cumprod(1.0 + r)
+    wealth = np.r_[1.0, np.cumprod(1.0 + r)]  # start from the initial capital, so a loss on day one counts
     return float((wealth / np.maximum.accumulate(wealth) - 1.0).min())
 
 
@@ -101,7 +101,9 @@ def block_bootstrap_sharpe_diff(ra: np.ndarray, rb: np.ndarray, block: int = 20,
     """Sharpe(a) - Sharpe(b) with a moving-block bootstrap CI and two-sided p-value.
 
     Resampling blocks of consecutive days (same days for both strategies) keeps volatility
-    clustering and the correlation between the two return streams intact.
+    clustering and the correlation between the two return streams intact. The p-value comes from the
+    same bootstrap distribution as the 95% interval (twice the share of draws on the far side of zero),
+    so p < 0.05 exactly when the interval excludes zero.
     """
     ra, rb = np.asarray(ra, dtype=np.float64), np.asarray(rb, dtype=np.float64)
     ok = np.isfinite(ra) & np.isfinite(rb)
@@ -121,5 +123,5 @@ def block_bootstrap_sharpe_diff(ra: np.ndarray, rb: np.ndarray, block: int = 20,
     diffs = np.concatenate(diffs)
     diffs = diffs[np.isfinite(diffs)]
     lo, hi = np.percentile(diffs, [2.5, 97.5])
-    p = float(np.mean(np.abs(diffs - diffs.mean()) >= abs(obs)))
+    p = float(min(1.0, 2.0 * min(np.mean(diffs <= 0), np.mean(diffs >= 0))))
     return {"diff": float(obs), "ci_low": float(lo), "ci_high": float(hi), "p_value": p}

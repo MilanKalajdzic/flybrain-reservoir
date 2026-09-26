@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import pytest  # noqa: E402
+from scipy import stats  # noqa: E402
 
 from flyres import plotting  # noqa: E402
 from flyres.config import load_config  # noqa: E402
@@ -17,7 +18,7 @@ from flyres.market import make_dataset  # noqa: E402
 from flyres.readout import walk_forward  # noqa: E402
 from flyres.synthetic import synthetic_prices  # noqa: E402
 from flyres.volatility import (BASELINES, diebold_mariano, historical_mean, make_vol_data, qlike,  # noqa: E402
-                               run_vol_experiment, vol_markdown)
+                               run_vol_experiment, vol_markdown, within_wiring_spearman)
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -48,10 +49,35 @@ def test_qlike_diebold_mariano_and_historical_mean():
     rng = np.random.default_rng(0)
     y = rng.normal(size=2000)
     good, bad = (y - 0.9 * y) ** 2, (y - 0.0 * y) ** 2
-    t, p = diebold_mariano(good, bad, lag=5)
+    t, p = diebold_mariano(good, bad, horizon=5)
     assert t < -5 and p < 1e-6
-    assert np.isnan(diebold_mariano(good, good, lag=5)[0])
+    assert np.isnan(diebold_mariano(good, good, horizon=5)[0])
+    # one-step forecasts: the HLN version is exactly the paired t-test on the loss difference
+    a, b = rng.normal(size=300) ** 2, rng.normal(size=300) ** 2 * 1.2
+    ref = stats.ttest_1samp(a - b, 0.0)
+    np.testing.assert_allclose(diebold_mariano(a, b, horizon=1), (ref.statistic, ref.pvalue), rtol=1e-10)
+    # overlapping 5-day targets: equal-weight autocovariances up to lag 4 and the HLN correction
+    d = np.convolve(rng.normal(size=1004), np.ones(5), "valid") * 0.1 + 0.03  # MA(4), mean 0.03
+    n, dc = len(d), d - d.mean()
+    var = (dc @ dc + 2 * sum(dc[k:] @ dc[:-k] for k in range(1, 5))) / n
+    t_ref = d.mean() / np.sqrt(var / n) * np.sqrt((n + 1 - 10 + 5 * 4 / n) / n)
+    t, p = diebold_mariano(d, np.zeros(n), horizon=5)
+    assert t == pytest.approx(t_ref) and p == pytest.approx(2 * stats.t.sf(abs(t_ref), n - 1))
     np.testing.assert_allclose(historical_mean(np.arange(6.0), 2)[2:], [0.0, 0.5, 1.0, 1.5])
+
+
+def test_memory_correlation_within_wirings():
+    """Wirings that differ in both memory and error make a strong correlation over all reservoirs; within a
+    wiring there is none, and the permutation test says so. A real within-wiring link is found."""
+    rng = np.random.default_rng(1)
+    wiring = np.repeat(np.arange(5), 10)
+    memory = wiring * 5.0 + rng.normal(size=50)
+    unrelated = -wiring * 5.0 + rng.normal(size=50)
+    assert stats.spearmanr(memory, unrelated)[0] < -0.8
+    rho, p = within_wiring_spearman(memory, unrelated, wiring, n_perm=2000)
+    assert abs(rho) < 0.3 and p > 0.05
+    rho, p = within_wiring_spearman(memory, -memory + rng.normal(scale=0.1, size=50), wiring, n_perm=2000)
+    assert rho < -0.9 and p < 0.01
 
 
 def test_walk_forward_records_validation_error():

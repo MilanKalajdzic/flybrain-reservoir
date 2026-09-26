@@ -184,14 +184,16 @@ def run_job(sub: Subgraph, datasets: dict, cfg: ExperimentConfig, wiring: str, s
 
 
 def run_baselines(datasets: dict, cfg: ExperimentConfig):
-    """Same test period and fitting procedure as the reservoirs, without a reservoir."""
+    """Same test period and fitting procedure as the reservoirs, without a reservoir. The linear models get the
+    same (practically nil) penalty the reservoir readout puts on its input columns, so linear_features is
+    exactly a reservoir readout with its states removed."""
     ev, rc = cfg.eval, cfg.reservoir
     rows, preds = [], {}
     for ticker, ds in datasets.items():
         post = ds.slice(rc.washout)
         for name, X in (("linear_features", post.X), ("ar", post.X_ar)):
             pred, _ = walk_forward(X, post.target, post.horizon, ev.train_min, ev.refit_every, ev.window,
-                                   val_frac=ev.val_frac)
+                                   val_frac=ev.val_frac, penalty_factor=np.full(X.shape[1], rc.input_penalty))
             preds[(name, ticker)] = pred
         bh = np.full(len(post), np.nan)
         bh[ev.train_min:] = 1.0
@@ -277,8 +279,9 @@ def _dp(d, p, digits: int = 3) -> str:
 def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: pd.DataFrame, graph: pd.DataFrame,
                  comparisons: pd.DataFrame) -> str:
     rc, sc, ev = cfg.reservoir, cfg.subgraph, cfg.eval
+    names = {"malecns": "male CNS v1.0", "flywire": "FlyWire 783"}
     source = "synthetic graph (NOT the real connectome)" if cfg.connectome.source == "synthetic" else \
-        f"male CNS v1.0, >= {cfg.connectome.min_weight} synapses per edge"
+        f"{names.get(cfg.connectome.source, cfg.connectome.source)}, >= {cfg.connectome.min_weight} synapses per edge"
     lines = [
         f"# flybrain-reservoir: {cfg.name}",
         "",
@@ -325,8 +328,10 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
                 lines.append(f"| {r['comparison']} | {_dp(r['d_ic'], r['p_ic'])} | "
                              f"{_dp(r['d_hit_rate'], r['p_hit_rate'])} | {_dp(r['d_sharpe_net'], r['p_sharpe_net'], 2)} "
                              f"| {ci} |")
-        lines += ["", f"Rule of thumb: the standard error of an annualized Sharpe over {years:.0f} years is about "
-                      f"{1 / np.sqrt(max(years, 1e-9)):.2f}, so differences much smaller than that are noise."]
+        lines += ["", f"For scale: one strategy's annualized Sharpe over {years:.0f} years has a standard error of "
+                      f"about {1 / np.sqrt(max(years, 1e-9)):.2f}. Two strategies trading the same market move "
+                      "together, so the difference between them is measured much more precisely than that: judge "
+                      "differences by the paired tests and bootstrap intervals above, not by that number."]
 
     if "memory_capacity" in graph.columns:
         mc_cmp = comparisons[comparisons["ticker"] == "-"].set_index("comparison") if len(comparisons) else None
@@ -375,7 +380,7 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
               "- Active readouts: share of readout neurons whose state varies by more than 0.001 under white-noise "
               "input (mean over seeds).",
               "- Unstable readouts: share whose state still depends on inputs from hundreds of steps ago (worst seed). "
-              "Should be 0% for a valid reservoir."]
+              "A valid reservoir has at most 1%."]
     if has_stab:
         bad = sorted(graph.loc[graph["unstable_readouts"] > 0.01, "wiring"].unique())
         if bad:
@@ -385,8 +390,11 @@ def make_summary(cfg: ExperimentConfig, sub: Subgraph, datasets: dict, metrics: 
               "- p-values come from paired tests over seeds (seed = input weights, readout neurons, control "
               "randomness). They capture seed-to-seed variation, not luck in the market history; the ensemble "
               "bootstrap covers that part.",
-              "- A model that learns nothing predicts the average (positive) return and turns into buy & hold, so "
-              "compare Sharpe against buy & hold and hit rate against the up-day rate. IC is the cleanest skill measure.",
+              "- The average daily return is positive, so a model that has learned nothing but that average is "
+              "always long: buy & hold. Compare Sharpe against buy & hold and hit rate against the up-day rate. IC "
+              "is the cleanest skill measure.",
+              "- linear_features and ar are fitted like the reservoir readout's input columns (practically "
+              "unpenalized), so *connectome vs linear_features* is what the reservoir states add.",
               "- Several comparisons are run at once, so expect the odd p < 0.05 by chance.", ""]
     return "\n".join(lines)
 

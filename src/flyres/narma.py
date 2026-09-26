@@ -5,15 +5,18 @@ reservoir-computing benchmark since Jaeger 2003) asks it to compute something fr
 
     y(t+1) = 0.3 y(t) + 0.05 y(t) * sum_{i=0..9} y(t-i) + 1.5 u(t-9) u(t) + 0.1,   u(t) ~ U[0, 0.5]
 
-The readout sees the reservoir state after u(t) (plus u(t) itself) and predicts y(t+1). The product
-u(t-9) u(t) needs a memory of 10 steps and a multiplication, so a linear model of the recent inputs
-can't do it; a good reservoir gets the error well below that. Scored by NRMSE = RMSE / std(y) on
-held-out steps (lower is better; 1 = no better than predicting the mean).
+The readout predicts y(t+1) from u(t) itself and the recorded neurons once u(t) has reached them. The
+recorded neurons are never input neurons, so u(t) arrives there one step later: the readout uses their
+state at t+1, which depends on nothing after u(t) (only input neurons receive u(t+1)). Pairing y(t+1) with
+the state at t instead would leave u(t) only as a linear feature, and the product term out of reach
+for any wiring (NRMSE can't go below ~0.29 then). The product u(t-9) u(t) needs a memory of 10 steps
+and a multiplication, so a linear model of the recent inputs can't do it; a good reservoir gets the
+error well below that. Scored by NRMSE = RMSE / std(y) on held-out steps (lower is better; 1 = no better
+than predicting the mean).
 
-Like memory capacity, the main score adds readout noise (memory.readout_noise, 0.1% of a neuron's maximum activity)
-to the recorded states before fitting. Noise-free, a readout decodes fluctuations of a millionth: on the
-whole brain the fly's NARMA error was 0.41 noise-free and 0.83 with the noise (the degree-preserving
-shuffle: 0.39 and 0.42). The noise-free score is kept for reference.
+Like memory capacity, the main score adds readout noise (memory.readout_noise, 0.1% of a neuron's maximum
+activity) to the recorded states before fitting; noise-free, a readout can decode fluctuations of a
+millionth. The noise-free score is kept for reference.
 
 Like the gain sweep, every wiring runs at many gains and is judged at its best valid one, with the
 same reservoirs (input weights, bias, readout neurons, latching tests) as the memory benchmark.
@@ -61,6 +64,13 @@ def nrmse(pred: np.ndarray, y: np.ndarray) -> float:
     return float(np.sqrt(np.mean((pred - y) ** 2)) / np.std(y))
 
 
+def narma_rows(u: np.ndarray, states: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Features and target per row t: [u(t), recorded state at t+1] -> y[t] (the NARMA value at t+1).
+    The recorded neurons aren't input neurons, so u(t) reaches them one step later, and their state at t+1
+    depends on nothing after u(t). The last row has no next state and is dropped."""
+    return np.hstack([u[:-1, None], states[1:]]), y[:-1]
+
+
 def _fit_score(X: np.ndarray, y: np.ndarray, penalty=None) -> float:
     """Ridge readout on rows WASHOUT..-N_TEST (penalty picked on the end of that window), NRMSE on the
     last N_TEST rows."""
@@ -78,15 +88,16 @@ def linear_baseline(seed: int, n_steps: int = N_STEPS) -> float:
 
 def narma_score(reservoir: Reservoir, record_idx, seed: int, input_penalty: float = 0.001,
                 readout_noise: float = 0.0, n_steps: int = N_STEPS) -> dict:
-    """NRMSE of a readout on [u(t), reservoir state] for the NARMA-10 series of `seed`: noise-free
-    ("nrmse") and, if readout_noise > 0, with that much Gaussian noise on every state ("nrmse_noisy")."""
+    """NRMSE of a readout on [u(t), recorded state once u(t) has reached it] (see narma_rows) for the
+    NARMA-10 series of `seed`: noise-free ("nrmse") and, if readout_noise > 0, with that much Gaussian noise
+    on every state ("nrmse_noisy")."""
     u, y = narma10(n_steps, seed)
     states = reservoir.run((4.0 * u - 1.0)[:, None].astype(np.float32), record_idx=record_idx)  # u in [-1, 1]
     penalty = np.r_[input_penalty, np.ones(states.shape[1])]
-    out = {"nrmse": _fit_score(np.hstack([u[:, None], states]), y, penalty)}
+    out = {"nrmse": _fit_score(*narma_rows(u, states, y), penalty)}
     if readout_noise > 0:
         noisy = states + np.random.default_rng([seed, 12]).normal(0.0, readout_noise, states.shape)
-        out["nrmse_noisy"] = _fit_score(np.hstack([u[:, None], noisy]), y, penalty)
+        out["nrmse_noisy"] = _fit_score(*narma_rows(u, noisy, y), penalty)
     return out
 
 

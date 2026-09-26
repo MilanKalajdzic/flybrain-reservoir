@@ -1,11 +1,13 @@
 """Compare every wiring at its own best gain (memory capacity only).
 
     python scripts/gain_sweep.py --config configs/full.yaml --set reservoir.backend=torch
-    python scripts/gain_sweep.py --config configs/small.yaml --gains 0.5 0.9 1.0 1.25 1.5 --set "seeds=[0,1,2]"
+    python scripts/gain_sweep.py --config configs/small.yaml --gains 0.5 0.9 1.0 1.25 1.5 --seeds 0 1
 
-Uses the config's subgraph, wirings, seeds, reservoir and memory settings; only the gain changes.
+Uses the config's subgraph, wirings, reservoir and memory settings, with the seeds from --seeds (default 0 1 2,
+whatever the config says); only the gain changes.
 Output in results/<name>/gain_sweep/: summary.md (start here), sweep.csv (every run),
-grid.csv (mean per wiring and gain), gain_sweep.png. --replot redraws them from sweep.csv.
+grid.csv (mean per wiring and gain), gain_sweep.png. --replot redraws them from sweep.csv, with the settings
+the sweep ran with (config_used.yaml).
 """
 import argparse
 import warnings
@@ -43,12 +45,17 @@ def main():
     out = Path(cfg.output_dir) / cfg.name / "gain_sweep"
     out.mkdir(parents=True, exist_ok=True)
 
-    df = pd.read_csv(out / "sweep.csv") if args.replot else run_gain_sweep(cfg, args.gains, verbose=not args.quiet)
+    if args.replot:
+        df = pd.read_csv(out / "sweep.csv")
+        if (out / "config_used.yaml").exists():  # the settings the sweep ran with, not today's command line
+            cfg = load_config(out / "config_used.yaml")
+    else:
+        df = run_gain_sweep(cfg, args.gains, verbose=not args.quiet)
+        df.to_csv(out / "sweep.csv", index=False)
+        save_config(cfg, out / "config_used.yaml")
     summary = summarize_sweep(df)
     best = best_valid(summary)
-    df.to_csv(out / "sweep.csv", index=False)
     summary.to_csv(out / "grid.csv", index=False)
-    save_config(cfg, out / "config_used.yaml")
     (out / "summary.md").write_text(sweep_markdown(cfg, summary, best), encoding="utf-8")
     label = "spectral radius" if cfg.reservoir.normalize == "spectral" else "bulk scale (frobenius)"
     plt.close(plotting.plot_gain_sweep(summary, label, noise=cfg.memory.readout_noise, path=out / "gain_sweep.png",

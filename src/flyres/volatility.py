@@ -7,17 +7,22 @@ market inputs as the returns experiment), a second readout, a different target:
 
     y_t = log( (1/h) * sum_{k=1..h} r_{t+k}^2 )      realized variance over the next h days (log)
 
-Benchmarks, all fitted walk-forward with the same ridge code and test period:
+Benchmarks, all fitted walk-forward with the same ridge code and test period, and with the same (practically
+nil) penalty that every reservoir readout puts on these columns:
     ewma        RiskMetrics EWMA variance (lambda 0.94), in logs, with a fitted intercept and slope
-    har         log-HAR (Corsi 2009): y on log realized variance over the last 1, 5 and 22 days. The
-                standard benchmark, and hard to beat
+    har         log-HAR (Corsi 2009): y on log realized variance over the last 1, 5 and 22 days, practically
+                OLS as in Corsi. The standard benchmark, and hard to beat
     har_inputs  HAR plus the reservoir's 5 input features, linear: everything the reservoir sees today,
                 without memory or nonlinearity
     har_levels  the classic HAR-RV, fitted on variance instead of log variance (reference for QLIKE)
 
-Every reservoir's readout sees [HAR + inputs (practically unpenalized), states], so each reservoir model
-contains har_inputs as a special case and the states can only add to it. Reservoir minus har_inputs is
-what the wiring contributes.
+Every reservoir's readout sees [HAR + inputs (practically unpenalized), states]. har_inputs is fitted the
+same way on the same columns, so it is exactly a reservoir readout with its states removed, and reservoir
+minus har_inputs is what the states contribute. (Fitting the benchmarks with a tuned ridge penalty instead
+would let the penalty, not the states, account for part of the difference: on overlapping multi-day
+targets the validation block is short, and it sometimes picks a penalty that flattens the forecast.)
+
+Diebold-Mariano tests use the Harvey-Leybourne-Newbold small-sample version, as in R's forecast::dm.test.
 
 Losses:
     log MSE  squared error on log variance, reported as R² against the expanding historical mean. The main
@@ -121,22 +126,27 @@ def vol_metrics(logp, varp, y, rv, hist) -> dict:
             "bias_log": float(e.mean())}
 
 
-def diebold_mariano(loss_a, loss_b, lag: int) -> tuple[float, float]:
-    """DM test of equal expected loss with a Newey-West variance (Bartlett weights, `lag` lags).
+def diebold_mariano(loss_a, loss_b, horizon: int) -> tuple[float, float]:
+    """Diebold-Mariano test of equal expected loss for `horizon`-step forecasts, in the small-sample version
+    of Harvey, Leybourne & Newbold (1997), as in R's forecast::dm.test: the variance of the mean loss
+    difference uses its autocovariances up to lag h-1 with equal weights (h-day targets overlap by h-1 days;
+    Bartlett weights if that estimate isn't positive), the statistic is scaled by the HLN correction and
+    compared with a t distribution with n-1 degrees of freedom.
     Returns (t, two-sided p); t < 0 means `a` has the lower loss."""
     d = np.asarray(loss_a, dtype=np.float64) - np.asarray(loss_b, dtype=np.float64)
     d = d[np.isfinite(d)]
-    n = len(d)
-    if n < 10 or np.allclose(d, 0):
+    n, h = len(d), int(horizon)
+    if n < 10 or h < 1 or np.allclose(d, 0):
         return float("nan"), float("nan")
     dc = d - d.mean()
-    var = dc @ dc / n
-    for k in range(1, min(lag, n - 1) + 1):
-        var += 2.0 * (1.0 - k / (lag + 1.0)) * (dc[k:] @ dc[:-k]) / n
+    gamma = np.array([dc[k:] @ dc[:n - k] / n for k in range(min(h, n - 1))])  # autocovariances, lags 0..h-1
+    var = gamma[0] + 2.0 * gamma[1:].sum()
+    if var <= 0:  # the equal-weight estimate can go negative; Bartlett weights can't
+        var = gamma[0] + 2.0 * ((1.0 - np.arange(1, len(gamma)) / h) * gamma[1:]).sum()
     if var <= 0:
         return float("nan"), float("nan")
-    t = d.mean() / np.sqrt(var / n)
-    return float(t), float(2.0 * stats.norm.sf(abs(t)))
+    t = d.mean() / np.sqrt(var / n) * np.sqrt((n + 1 - 2 * h + h * (h - 1) / n) / n)
+    return float(t), float(2.0 * stats.t.sf(abs(t), df=n - 1))
 
 
 # --------------------------------------------------------------------------- jobs
@@ -166,7 +176,7 @@ def vol_job(sub, data: dict, cfg: ExperimentConfig, wiring: str, seed: int, gain
                                                                        washout=rc.washout)
         lin = np.hstack([v.har, v.X])
         X = np.hstack([lin, states])
-        penalty = np.r_[np.full(lin.shape[1], rc.input_penalty), np.ones(states.shape[1])]
+        penalty = np.r_[linear_penalty(lin, cfg), np.ones(states.shape[1])]
         for h in v.y:
             logp, varp = forecast(X, v.y[h], h, cfg, penalty)
             rows.append({"ticker": ticker, "horizon": h, "model": wiring, "seed": seed,
@@ -175,15 +185,21 @@ def vol_job(sub, data: dict, cfg: ExperimentConfig, wiring: str, seed: int, gain
     return {"wiring": wiring, "seed": seed, "rows": rows, "preds": preds, "seconds": time.time() - t0}
 
 
+def linear_penalty(X: np.ndarray, cfg: ExperimentConfig) -> np.ndarray:
+    """The penalty every reservoir readout puts on its HAR and input columns (practically none), for fitting
+    the linear benchmarks exactly the same way."""
+    return np.full(X.shape[1], cfg.reservoir.input_penalty)
+
+
 def vol_baselines(data: dict, cfg: ExperimentConfig):
     ev = cfg.eval
     rows, preds = [], {}
     for ticker, (_, v) in data.items():
         inputs = {"ewma": v.ewma, "har": v.har, "har_inputs": np.hstack([v.har, v.X])}
         for h in v.y:
-            out = {name: forecast(X, v.y[h], h, cfg) for name, X in inputs.items()}
+            out = {name: forecast(X, v.y[h], h, cfg, linear_penalty(X, cfg)) for name, X in inputs.items()}
             level, _ = walk_forward(np.exp(v.har), v.rv[h], h, ev.train_min, ev.refit_every, ev.window,
-                                    val_frac=ev.val_frac)
+                                    val_frac=ev.val_frac, penalty_factor=linear_penalty(v.har, cfg))
             level = np.where(np.isfinite(level), np.maximum(level, DAY_FLOOR), np.nan)  # OLS can go negative
             out["har_levels"] = (np.log(level), level)
             for name, (logp, varp) in out.items():
@@ -195,8 +211,8 @@ def vol_baselines(data: dict, cfg: ExperimentConfig):
 
 def compare_vol(data: dict, preds: dict, metrics: pd.DataFrame, cfg: ExperimentConfig) -> pd.DataFrame:
     """Seed-ensemble forecasts (mean over seeds) against HAR and HAR + inputs, and connectome vs each control.
-    Diebold-Mariano test on squared log errors (Newey-West with h lags, since h-day targets overlap), the
-    QLIKE change as a second view, and for connectome vs a control the paired t-test over seeds."""
+    Diebold-Mariano test on squared log errors (HLN version, see diebold_mariano), the QLIKE change as a
+    second view, and for connectome vs a control the paired t-test over seeds."""
     wirings = [w for w in cfg.wirings if w in WIRINGS]
     rows = []
     for ticker, (_, v) in data.items():
@@ -212,7 +228,7 @@ def compare_vol(data: dict, preds: dict, metrics: pd.DataFrame, cfg: ExperimentC
                 sa, sb = (y - ens[a][0]) ** 2, (y - ens[b][0]) ** 2
                 qa, qb = qlike(rv, ens[a][1]), qlike(rv, ens[b][1])
                 ok = np.isfinite(sa) & np.isfinite(sb) & np.isfinite(qa) & np.isfinite(qb)
-                t, p = diebold_mariano(sa[ok], sb[ok], lag=h)
+                t, p = diebold_mariano(sa[ok], sb[ok], horizon=h)
                 row = {"ticker": ticker, "horizon": h, "comparison": f"{a} vs {b}",
                        "ens_mse_change_pct": 100.0 * (sa[ok].mean() / sb[ok].mean() - 1.0), "dm_t": t, "dm_p": p,
                        "ens_qlike_change_pct": 100.0 * (qa[ok].mean() / qb[ok].mean() - 1.0)}
@@ -242,6 +258,33 @@ def memory_link(metrics: pd.DataFrame, graph: pd.DataFrame | None) -> pd.DataFra
                     on=["model", "seed"], how="inner")
     out["memory_measure"] = "with readout noise" if col == "memory_capacity_noisy" else "noise-free"
     return out if len(out) else None
+
+
+def within_wiring_spearman(memory, error, wiring, n_perm: int = 10_000, seed: int = 0) -> tuple[float, float]:
+    """Rank correlation between memory and error inside each wiring (ranks taken and centered within the
+    wiring, then pooled), with a permutation p-value that shuffles memory only within wirings.
+
+    Reservoirs of one wiring share its structure, so a correlation over all reservoirs mostly compares
+    wirings, and its textbook p-value treats them as independent (50 reservoirs are really 5 wirings).
+    This asks the question that can be tested: within a wiring, do seeds with more memory forecast better?"""
+    frame = pd.DataFrame({"m": memory, "e": error, "w": wiring}).dropna()
+    groups = [g for _, g in frame.groupby("w") if len(g) > 1]
+    if not groups:
+        return float("nan"), float("nan")
+    rm = [stats.rankdata(g["m"]) - (len(g) + 1) / 2 for g in groups]
+    re = np.concatenate([stats.rankdata(g["e"]) - (len(g) + 1) / 2 for g in groups])
+
+    def corr(parts):
+        x = np.concatenate(parts)
+        den = np.sqrt((x ** 2).sum() * (re ** 2).sum())
+        return float((x * re).sum() / den) if den > 0 else float("nan")
+
+    obs = corr(rm)
+    if not np.isfinite(obs):
+        return obs, float("nan")
+    rng = np.random.default_rng(seed)
+    perm = np.array([corr([rng.permutation(r) for r in rm]) for _ in range(n_perm)])
+    return obs, float((1 + np.sum(np.abs(perm) >= abs(obs) - 1e-12)) / (n_perm + 1))
 
 
 # --------------------------------------------------------------------------- driver
@@ -317,8 +360,9 @@ def vol_markdown(cfg: ExperimentConfig, res: VolResult) -> str:
     lines = [f"# Volatility forecasts: {cfg.name}", "",
              "Target: log realized variance over the next h days (mean of squared daily log returns). Every model "
              "is fitted walk-forward on the same test days as the returns experiment. Reservoir readouts see "
-             "HAR + the 5 market inputs (practically unpenalized) + the reservoir states, so *reservoir minus "
-             "HAR + inputs* is what the wiring adds.", "",
+             "HAR + the 5 market inputs (practically unpenalized) + the reservoir states; the linear benchmarks are "
+             "fitted with the same penalty on the same columns, so HAR + inputs is a reservoir readout without its "
+             "states and *reservoir minus HAR + inputs* is what the states add.", "",
              "- R² (log): out-of-sample, against the expanding historical mean; *log MSE vs HAR* is the change in "
              "squared error on log variance (negative = better than HAR). The main measure: every log model is "
              "fitted for exactly this.",
@@ -347,7 +391,8 @@ def vol_markdown(cfg: ExperimentConfig, res: VolResult) -> str:
         cc = c[(c["ticker"] == ticker) & (c["horizon"] == h)]
         if len(cc):
             lines += ["", "Seed-ensemble forecasts (mean over seeds). Diebold-Mariano test on squared log errors "
-                          f"(Newey-West, {h} lags); for connectome vs a control also the paired t-test over seeds.", "",
+                          "(Harvey-Leybourne-Newbold version, autocovariances up to lag "
+                          f"{h - 1}); for connectome vs a control also the paired t-test over seeds.", "",
                       "| comparison | log MSE change | DM t | DM p | QLIKE change | seeds: Δ log MSE (p) |",
                       "|---|---|---|---|---|---|"]
             for _, r in cc.iterrows():
@@ -362,11 +407,15 @@ def vol_markdown(cfg: ExperimentConfig, res: VolResult) -> str:
         source = "the gain sweep, at the same gains" if res.gains else "the main experiment"
         lines += ["## Does memory help?", "",
                   f"Each reservoir's memory capacity ({measure}, from {source}) against how much its states change "
-                  "the log MSE of HAR + inputs. Spearman correlation over all reservoirs (wirings x seeds); "
-                  "negative = more memory, lower error.", "", "| ticker | horizon | reservoirs | Spearman ρ | p |",
-                  "|---|---|---|---|---|"]
+                  "the log MSE of HAR + inputs; negative = more memory, lower error. *All reservoirs*: Spearman "
+                  "correlation over every wiring and seed, which mostly compares wirings (descriptive; the reservoirs "
+                  "of one wiring aren't independent). *Within wirings*: the same with ranks taken inside each wiring, "
+                  "and a p-value from shuffling memory within wirings (10,000 permutations).", "",
+                  "| ticker | horizon | reservoirs | ρ, all reservoirs | ρ, within wirings | p (within) |",
+                  "|---|---|---|---|---|---|"]
         for (ticker, h), g in res.link.groupby(["ticker", "horizon"]):
-            rho, p = stats.spearmanr(g["memory"], g["mse_vs_har_inputs_pct"])
-            lines.append(f"| {ticker} | {h} | {len(g)} | {rho:+.2f} | {p:.3f} |")
+            rho = stats.spearmanr(g["memory"], g["mse_vs_har_inputs_pct"])[0]
+            rho_w, p_w = within_wiring_spearman(g["memory"], g["mse_vs_har_inputs_pct"], g["model"])
+            lines.append(f"| {ticker} | {h} | {len(g)} | {rho:+.2f} | {rho_w:+.2f} | {p_w:.3f} |")
         lines.append("")
     return "\n".join(lines)

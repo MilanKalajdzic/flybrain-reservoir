@@ -13,6 +13,9 @@ def test_sharpe():
 
 def test_max_drawdown():
     assert max_drawdown(np.array([0.1, -0.5, 0.2])) == pytest.approx(-0.5)
+    # measured from the starting capital: a loss on the first day counts
+    assert max_drawdown(np.array([-0.5, 0.1])) == pytest.approx(-0.5)
+    assert max_drawdown(np.array([-0.2, -0.1, 0.05])) == pytest.approx(0.8 * 0.9 - 1.0)
 
 
 def test_costs_charged_on_turnover():
@@ -51,3 +54,7 @@ def test_bootstrap_detects_a_real_difference_and_not_a_fake_one():
     assert same["diff"] == pytest.approx(0.0) and same["ci_low"] <= 0 <= same["ci_high"]
     better = block_bootstrap_sharpe_diff(base + 0.002, base, n_boot=500)
     assert better["diff"] > 0 and better["ci_low"] > 0 and better["p_value"] < 0.01
+    # p and the interval come from the same draws, so they never contradict each other
+    for shift in (0.0, 0.0002, 0.0004, 0.0006, 0.0008):
+        r = block_bootstrap_sharpe_diff(base + shift, base + rng.standard_normal(3000) * 0.004, n_boot=500)
+        assert (r["p_value"] < 0.05) == (r["ci_low"] > 0 or r["ci_high"] < 0)

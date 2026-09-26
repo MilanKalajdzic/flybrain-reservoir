@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from flyres.config import load_config
-from flyres.narma import (best_narma, linear_baseline, memory_link, narma10, narma_markdown, nrmse, run_narma,
-                          summarize_narma)
+from flyres.narma import (best_narma, linear_baseline, memory_link, narma10, narma_markdown, narma_rows, nrmse,
+                          run_narma, summarize_narma)
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -21,6 +21,14 @@ def test_narma10_follows_the_recursion():
     expect = 0.3 * yy[t] + 0.05 * yy[t] * yy[t - 9:t + 1].sum() + 1.5 * u[t - 9] * u[t] + 0.1
     assert y[t] == pytest.approx(expect)
     assert narma10(500, 3)[0] is u and not u.flags.writeable  # cached, read-only
+
+
+def test_readout_rows_use_the_state_after_the_input_reached_it():
+    """Regression: y(t+1) was paired with the state at t, where the recorded (non-input) neurons haven't felt
+    u(t) yet, so the u(t-9) u(t) product was out of reach for every wiring."""
+    u, states, y = np.arange(5.0), np.arange(10.0).reshape(5, 2), 10 * np.arange(5.0)
+    X, target = narma_rows(u, states, y)
+    assert X.tolist() == [[0, 2, 3], [1, 4, 5], [2, 6, 7], [3, 8, 9]] and target.tolist() == [0, 10, 20, 30]
 
 
 def test_nrmse_and_linear_baseline():
@@ -48,7 +56,7 @@ def test_run_narma_end_to_end(tmp_path):
     assert list(best["wiring"]) == ["connectome", "erdos_renyi"] and best["standard"].notna().all()
     assert {"nrmse_noisy", "nrmse"} <= set(best.columns)
     # some gain beats the lags-only model clearly, noise-free: the reservoir computes the product term
-    # (margin ~0.07 on numpy/scipy versions tested; a 200-neuron reservoir only ties the baseline)
+    # (margin ~0.05 on this 300-neuron synthetic circuit)
     assert grid["nrmse"].min() < baseline["nrmse"].mean() - 0.03
     sweep = runs[["wiring", "seed", "gain"]].assign(memory_capacity_noisy=np.arange(len(runs), dtype=float))
     link = memory_link(runs, sweep)

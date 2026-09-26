@@ -1,9 +1,11 @@
 """Leaky-tanh echo state network whose recurrent matrix is a (real or control) connectome.
 
-    x[t+1] = (1 - a) * x[t] + a * tanh(W @ x[t] + W_in @ u[t] + b)
+    x[t] = (1 - a) * x[t-1] + a * tanh(W @ x[t-1] + W_in @ u[t] + b)
 
 W is the signed synapse matrix rescaled to a target spectral radius, W_in only feeds the input
-(sensory) neurons, and only a subset of neurons is recorded for the readout. Nothing in here is
+(sensory) neurons, and only a subset of neurons is recorded for the readout. Row t of the recorded
+states is x[t], so the input neurons already respond to u[t] and every other neuron feels it one step
+later. Nothing in here is
 trained: the reservoir is fixed and only the linear readout (readout.py) learns.
 
 Backends: "numpy" (scipy.sparse, CPU) or "torch" (CPU or GPU, `pip install torch`).

@@ -54,11 +54,12 @@ folders; each script's `summary.md` has the rest.
   small circuit the best gains bring it level.
 - **Finer tuning doesn't rescue it.** A gain per brain region helps random wiring far more than the
   fly. A gain per neuron helps every wiring in the small circuit but mostly makes the fly latch, and
-  across the whole brain it widens the gap to about 10×. A second benchmark, NARMA-10, agrees.
+  across the whole brain it leaves the fly 7–10× behind. A second benchmark, NARMA-10, agrees.
 - **Robust:** feeding the input into random neurons or slowing the neurons down leaves the fly far
   behind across the whole brain. The one exception, slow neurons in a small circuit, is fragile.
 - **Replicated:** FlyWire's female brain, a second, independent connectome, has the same knots in the
-  same order and the same whole-brain deficit. The male CNS small-circuit tie doesn't replicate.
+  same order (all but one) and at least the same whole-brain deficit. The male CNS small-circuit tie
+  doesn't replicate.
 - **Volatility:** every reservoir beats the standard HAR benchmark by about 17% at a 5-day horizon,
   but a linear model with the same inputs already gets 15 of those 17 points, and the wiring moves
   the result by about 1 point.
@@ -77,9 +78,11 @@ seeds, including ones where the fly latches.*
 
 No edge at either scale, and the wiring doesn't matter. Every reservoir has an IC around 0.015 (t ≈
 1), a hit rate around 53.5%, below the 55.1% you get by always being long, and a Sharpe of 0.42 to
-0.51 against 0.59 for buy & hold. None of the connectome-vs-control differences is larger than the
-noise (the standard error of an 18½-year Sharpe is about 0.23). The equity curve's early lead over
-buy & hold comes entirely from sidestepping 2008.
+0.51 against 0.59 for buy & hold. None of the connectome-vs-control differences holds up: they're
+at most 0.06 in Sharpe, and every paired bootstrap interval for the difference includes zero, at
+both scales. Across seeds the whole-brain fly is consistently a hair behind Erdős–Rényi (Sharpe
+−0.05, p = 0.01), but that's consistency between seeds on one market history, not an edge. The
+equity curve's early lead over buy & hold comes entirely from sidestepping 2008.
 
 ### Memory: the fly remembers the least
 
@@ -142,12 +145,12 @@ distant past or go chaotic, in each of four latching tests with different inputs
 | whole CNS | **2.9** (1.25) | 22.8 (1) | 2.9 (1.1) | 3.1 (1) | 30.8 (8) |
 
 - **3,000 neurons: a tie.** Raising the gain to 3 more than doubles the fly's memory, and four of
-  the five wirings land between 6.0 and 7.4, within the seed-to-seed spread (the sign shuffle
-  latches at any gain above 1.1 and stays at 4.3). In this circuit the next hot spot is much weaker
-  than the antennal lobe (82 vs 251), so the gain can go up about 3× and wake most of the circuit
-  (59% of readouts move) before anything latches. Noise-free, the connectome and the weight shuffle
-  even come out ahead (14.0 and 14.7 vs 9.6 to 11.2), but that lead lives in tiny fluctuations and
-  disappears with noise.
+  the five wirings land between 6.0 and 7.4, with the fly (6.7) between the two scrambled wirings
+  (6.0 and 7.1; the sign shuffle latches at any gain above 1.1 and stays at 4.3). In this circuit
+  the next hot spot is much weaker than the antennal lobe (82 vs 251), so the gain can go up about
+  3× and wake most of the circuit (59% of readouts move) before anything latches. Noise-free, the
+  connectome and the weight shuffle even come out ahead (14.0 and 14.7 vs 9.6 to 11.2), but that
+  lead lives in tiny fluctuations and disappears with noise.
 - **Whole brain: the fly stays far behind.** Its best is 2.9 at gain 1.25, and past that its cores
   latch: the next hot spots are close behind the first (206, 178, 173…), so there's no headroom.
   The degree-preserving shuffle reaches 22.8 and Erdős–Rényi 30.8, 8–11× more. Noise-free the
@@ -195,12 +198,13 @@ The fly's whole-brain single gain is valid on the fresh inputs for 2 of 3 seeds.
   (6.2 vs 47.5 and 71.2).
 - **Same split as before.** The three wirings with the fly's connections end up together (around 12
   in the small circuit, 6 to 7 in the whole brain), the two scrambled ones far above.
-- **Why it doesn't rescue the fly: the knots sit inside the regions.** Every fly region is at least
-  4 times louder on its own than the same region in the degree-preserving shuffle (largest eigenvalue
-  of the region's own connections: antennal lobe 252 vs 7.5, visual system 206 vs 33, rest of the
-  central brain 171 vs 15, central complex 116 vs 4). A region's factor scales its knot together
-  with everything around it, so after the search the fly's dominant mode still sits on ~60 neurons,
-  against ~10,000 in the degree-preserving shuffle and ~14,000 in Erdős–Rényi.
+- **Why it doesn't rescue the fly: the knots sit inside the regions.** Across the whole brain, every
+  fly region is at least 4 times louder on its own than the same region in the degree-preserving
+  shuffle (largest eigenvalue of the region's own connections: antennal lobe 252 vs 7.5, visual system
+  206 vs 33, rest of the central brain 171 vs 15, central complex 116 vs 4; at least 2 times in the
+  small circuit). A region's factor scales its knot together with everything around it, so after
+  the search the fly's dominant mode still sits on ~60 neurons, against ~10,000 in the
+  degree-preserving shuffle and ~14,000 in Erdős–Rényi.
 - Erdős–Rényi's per-region result comes from starting at gain 1, not from its saturated best single
   gain of 8, and wakes up the whole brain (98% of readouts move, from 10%). Every per-region setting
   passes all latching tests on the fresh inputs, except one sign-shuffle seed in the small circuit.
@@ -235,7 +239,8 @@ ones, as before.
 do.)
 
 - **Per-neuron gains don't rescue the fly either.** Across the whole brain it goes from 3.4 to 5.4,
-  while the degree-preserving shuffle goes from 23 to 55: the gap widens to about 10×.
+  while the two scrambled wirings go from 23 and 31 to 55 and 40: the fly ends up 7–10× behind, about
+  where it started (7–9×).
 - **The fly mostly latches.** Of its 12 tries (4 targets × 3 seeds), the fly ends up valid once in
   the small circuit and twice in the whole brain; the degree-preserving shuffle 9 times at both
   scales. When the fly latches, 80–90% of the circuit locks up at once (checked on the small
@@ -314,10 +319,11 @@ previous state.
   gap grows to 13×. In the small circuit they cost the two wirings with the fly's connections and
   real signs half their memory (6.7 → 3.6 and 7.4 → 3.9), while the scrambled wirings barely move:
   the small-circuit tie depended on the input entering through the sensory neurons.
-- **Slow neurons remember less here, for every wiring.** A leaky neuron averages its recent inputs,
-  and white-noise inputs averaged together are hard to pull apart again, all the more with readout
-  noise. Across the whole brain every wiring ends up below 5 at leak 0.5 and around 1 or less at 0.2,
-  and the fly stays behind the best control (5× and 3×), so there's little left to compare.
+- **Slow neurons remember less in the male CNS, for every wiring.** A leaky neuron averages its
+  recent inputs, and white-noise inputs averaged together are hard to pull apart again, all the more
+  with readout noise. Across the whole brain every wiring ends up below 5 at leak 0.5 and around 1
+  or less at 0.2, and the fly stays behind the best control (5× and 3×), so there's little left to
+  compare.
 - **The one twist: slow neurons in the small circuit.** There the fly's connections with their real
   signs (connectome and weight shuffle) lose the least and end up ahead of both scrambled wirings
   (4.9 and 5.1 vs 2.9 and 3.3 at leak 0.5, 3.2 and 3.5 vs 1.3 and 1.5 at 0.2); shuffling the signs
@@ -342,19 +348,21 @@ nerve cord (139,248 neurons). It goes through the identical pipeline: same code,
 |---|---|---|---|---|---|
 | male CNS, whole | **2.9** (1.25) | 22.8 (1) | 2.9 (1.1) | 3.1 (1) | 30.8 (8) |
 | FlyWire, whole brain | **3.0** (1.25) | 21.8 (1) | 3.1 (1.5) | 3.3 (1) | 72.4 (1.5) |
-| male CNS, 3,000 neurons | **6.7** (3) | 6.8 (12) | 7.4 (3) | 4.1 (1) | 7.2 (1) |
+| male CNS, 3,000 neurons | **6.7** (3) | 6.0 (1) | 7.4 (3) | 4.3 (1.1) | 7.1 (1) |
 | FlyWire, 3,000 neurons | **4.8** (2) | 24.8 (1.25) | 3.8 (1.5) | 6.7 (1.25) | 41.5 (1.1) |
 
 (3 seeds each.)
 
-- **Same knots, in the same order.** FlyWire's largest eigenvalue is again an antennal-lobe knot:
-  163 (against ~33 for its degree-preserving shuffle), 237 local and projection neurons. Next come
-  the optic lobe (159, 154), the central brain (115) and the central complex (78, 73). In the male
-  CNS: 251, then 206, 178, 173, …, 116.
-- **Same whole-brain deficit.** At the standard gain only 1% of FlyWire's readouts move (79% in the
-  degree-preserving shuffle), and the fly's memory is 2.3 against 16.1; in the male CNS it was 2.2
-  against 16.1. At each wiring's best gain the fly reaches 3.0 against 22 and 72, and the three
-  wirings with the fly's connections end up at 3.0 to 3.3, as in the male CNS (2.9 to 3.1).
+- **Same knots, in the same order, but one.** FlyWire's largest eigenvalue is again an antennal-lobe
+  knot: 163 (against ~33 for its degree-preserving shuffle), 237 neurons, 231 of them local and
+  projection neurons. Next come the optic lobe (159, 154), the central brain (115) and the central
+  complex (78, 73). In the male CNS: 251, then 206, 178, 173, a mushroom-body knot (148) that isn't
+  among FlyWire's top eight, then 116.
+- **The same whole-brain deficit, or worse.** At the standard gain only 1% of FlyWire's readouts move
+  (79% in the degree-preserving shuffle), and the fly's memory is 2.3 against 16.1; in the male CNS's
+  gain sweep it was 2.2 against 16.1. At each wiring's best gain the fly reaches 3.0 against 22 and 72
+  (7× and 24× behind, against 8× and 11× in the male CNS), and the three wirings with the fly's
+  connections end up at 3.0 to 3.3, as in the male CNS (2.9 to 3.1).
 - **The small-circuit tie doesn't replicate.** FlyWire's 3,000-neuron circuit, grown the same way
   from its most-connected sensory neurons, leaves the fly 5–9× behind even at its best gain (4.8 vs
   25 and 42). The tie was a property of the male CNS circuit, not of fly wiring.
@@ -452,7 +460,7 @@ under 1% of the visual system and the mushroom body, and none of the central com
 version](docs/img/activity_heatmap_whole_cns.png)).
 
 <p align="center">
-  <img src="docs/img/brain_2008.gif" width="820" alt="Animated frontal view of the fly brain: the 3,000-neuron sensory circuit glows brighter as the 2008 crash deepens">
+  <img src="docs/img/brain_2008.gif" width="820" alt="Animated frontal view of the fly brain: the 3,000-neuron sensory circuit through the 2008 crash, glowing brightest in October 2008 rather than at the market bottom in March 2009">
 </p>
 
 *The 3,000-neuron circuit through the 2008 crash ([COVID version](docs/img/brain_COVID.gif)).*
@@ -469,8 +477,8 @@ high-dimensional state that carries memory of the past plus nonlinear mixes of i
 linear readout on top is trained.
 
 ```
-x[t+1] = (1 - a) * x[t] + a * tanh(W x[t] + W_in u[t] + b)      # reservoir, never trained
-ŷ[t]   = w_out · [u[t], x_R[t]]                                  # readout, ridge regression
+x[t] = (1 - a) * x[t-1] + a * tanh(W x[t-1] + W_in u[t] + b)    # reservoir, never trained
+ŷ[t] = w_out · [u[t], x_R[t]]                                    # readout, ridge regression
 ```
 
 - **W** = the connectome: synapse counts (log1p) between the selected neurons, signed by
@@ -479,7 +487,8 @@ x[t+1] = (1 - a) * x[t] + a * tanh(W x[t] + W_in u[t] + b)      # reservoir, nev
 - **u[t]** = 5 market features (1/5/20-day returns, 20-day volatility, vol ratio), z-scored
   against a trailing window only. They enter through **sensory neurons** only.
 - **x_R[t]** = states of randomly chosen neurons other than the input neurons (300 in the
-  3,000-neuron circuit, 1,000 in the whole CNS).
+  3,000-neuron circuit, 1,000 in the whole CNS). W_in only reaches the input neurons, so these feel
+  u[t] one step later, through W.
 - **Target** = next-day return divided by trailing volatility. Position = sign of the forecast,
   1 bp cost per unit of turnover.
 - **Evaluation** = walk-forward: 3 years of history before the first forecast, readout refit every 6
@@ -501,8 +510,9 @@ All controls are rescaled to the same spectral radius. For a given seed, every w
 same input weights, bias and readout neurons, so per-seed differences are paired comparisons.
 
 ### Baselines
-Linear ridge on the same 5 features, AR ridge on 10 lagged returns, buy & hold. Same test days,
-same fitting code.
+A linear model on the same 5 features, an AR model on 10 lagged returns, buy & hold. Same test days
+and fitting code, with the same (practically nil) penalty the reservoir readout puts on its input
+columns, so the linear model is exactly a reservoir readout with its states removed.
 
 ### Market-free benchmarks
 - **Memory capacity** (Jaeger 2001): feed white noise, train readouts to reconstruct the input
@@ -514,16 +524,20 @@ same fitting code.
   noisy number counts only memory that is actually usable.
 - **NARMA-10** (Atiya & Parlos 2000): predict y(t+1) = 0.3 y(t) + 0.05 y(t) Σᵢ y(t−i) +
   1.5 u(t−9) u(t) + 0.1 from a random input u. The product of inputs 9 steps apart needs memory
-  *and* a nonlinearity, so a linear model of the last 10 inputs only gets NRMSE ≈ 0.60. Scored on
-  held-out steps at every gain, like the gain sweep (`scripts/narma.py`), with the same readout noise
-  as memory capacity (noise-free kept for reference).
+  *and* a nonlinearity, so a linear model of the last 10 inputs only gets NRMSE ≈ 0.60. The readout
+  sees u(t) and the recorded neurons one step later, once u(t) has reached them (nothing in that
+  state depends on u(t+1)); reading them a step earlier would leave the newest input only linear and
+  put the product out of reach for any wiring. Scored on held-out steps at every gain, like the gain
+  sweep (`scripts/narma.py`), with the same readout noise as memory capacity (noise-free kept for
+  reference).
 - **Readout stability**: run the reservoir twice with inputs that differ only in the distant past.
   *Unstable readouts* end up in different states (they latched or went chaotic); a valid reservoir
-  has none. Four such tests with different inputs, and the worst one counts
+  has at most 1%. Four such tests with different inputs, and the worst one counts
   (`memory.stability_tests`): near the edge a reservoir can latch for some inputs and not others,
   and a single test passes by luck surprisingly often. *Active readouts* are the ones whose state
-  varies by more than 0.001. Both are reported per wiring in every summary, together with *top mode
-  spread*: roughly how many neurons carry the largest eigenvalue.
+  varies by more than 0.001. The main experiment's summary reports both per wiring, together with
+  *top mode spread* (roughly how many neurons carry the largest eigenvalue); the gain sweep and
+  NARMA-10 summaries report them at every gain.
 
 ## Setup
 
@@ -553,7 +567,7 @@ python -m venv .venv
 Calling the venv's Python directly skips `activate`, which PowerShell often blocks.
 
 The tests run on synthetic data in about a minute. The demo runs the whole pipeline offline on a
-fake connectome with a planted signal, just to prove everything works.
+fake connectome and fake prices with a planted signal, just to prove everything works.
 
 Notebooks in VS Code: open the `flybrain-reservoir` folder itself and pick the `.venv` kernel. If a
 notebook still says `No module named 'flyres'`, run `%pip install -e "<full path to the repo>"` in a
@@ -589,6 +603,7 @@ python scripts/hot_spots.py --config configs/flywire_full.yaml
 python scripts/run_experiment.py --config configs/flywire_small.yaml
 python scripts/gain_sweep.py --config configs/flywire_small.yaml
 python scripts/gain_sweep.py --config configs/flywire_full.yaml --set reservoir.backend=torch
+python scripts/robustness.py --config configs/flywire_small.yaml
 ```
 
 Results go to `results/small/`. Start with `summary.md`; the CSVs and `figures/` have the rest.
@@ -600,7 +615,8 @@ redraws from the saved activity without simulating). `gain_sweep.py` writes
 from 0.5 to 20). `region_gains.py` writes `results/small/region_gains/`; add `--set n_jobs=4` to use
 more cores. `vol_forecast.py` writes `results/small/volatility/` (run it after `run_experiment.py`
 so it can relate each reservoir's memory to its forecasts); `--best-gains` runs every wiring at its
-best gain from the gain sweep instead, into `results/small/volatility_best_gain/`. `robustness.py`
+best gain from the gain sweep instead (picked and checked on the sweep's 3 seeds, used for every
+seed), into `results/small/volatility_best_gain/`. `robustness.py`
 writes `results/small/robustness/`; `--variants` picks which checks to run. `gain_sweep.py`,
 `region_gains.py`, `homeostasis.py`, `narma.py` and `robustness.py` also take `--replot`, which
 redraws the summary and figure from the saved CSVs without running anything.
@@ -688,12 +704,12 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
 
 ## Reading the numbers
 
-- A model that learns nothing predicts the average return, which is positive, so it turns into
-  buy & hold. Compare Sharpe against buy & hold and hit rate against the up-day rate; IC is the
-  cleanest skill measure.
+- The average daily return is positive, so a model that has learned nothing but that average is
+  always long: buy & hold. Compare Sharpe against buy & hold and hit rate against the up-day rate;
+  IC is the cleanest skill measure.
 - p-values come from paired tests over seeds. Several comparisons run at once, so expect the odd
   p < 0.05 by chance; the memory gaps (with readout noise) between the fly and the two scrambled
-  wirings (p < 0.001) survive that. The fly vs weight and sign shuffle differences are small.
+  wirings (p < 0.01) survive that. The fly vs weight and sign shuffle differences are small.
 
 ### Limitations
 - Rate model, not spiking. A leaky integrate-and-fire version is the obvious next step.
@@ -706,8 +722,14 @@ full 166k each time step is a sparse multiply with ~6M connections, which is whe
   coordinate search and the per-neuron rule doesn't always settle, both over 3 seeds, so neither is
   a global optimum. Real brains also tune excitability with neuromodulators that depend on what the
   animal is doing, which nothing here models.
+- Memory capacity is estimated the standard way, from 3,000 white-noise steps, with 1,000 readouts
+  across the whole brain. That finite sample understates weak memory more than strong memory: on
+  FlyWire's whole brain, with five times more steps, the fly's best rises from 3.0 to 3.7, the
+  degree-preserving shuffle's from 21.8 to 24.2 and Erdős–Rényi's from 72.4 to 76.6, so the gaps
+  shrink by 10–15% (7.4× to 6.6×, 24.5× to 20.9×). The conclusion doesn't change, but the exact
+  ratios are a little generous to random wiring.
 - The readout noise level (std 0.001) is a judgment call. It changes the small-circuit
-  verdict at best gains (fly's connections slightly ahead noise-free, a tie with noise), not the
+  verdict at best gains (the fly's connections ahead noise-free, a tie with noise), not the
   whole-brain one.
 - Realized variance comes from daily squared returns, the only thing daily closes allow. That proxy
   is noisy; with intraday (5-minute) data every volatility model would be more precise and HAR harder
@@ -764,7 +786,9 @@ CITATION.cff      how to cite this repo (GitHub's "Cite this repository" button)
 
 - Male CNS v1.0 connectome: FlyEM (HHMI Janelia), University of Cambridge, MRC LMB and Google
   Research, <https://male-cns.janelia.org>, licensed CC-BY 4.0. Cite the dataset paper listed on
-  the project site if you use it. The figures in `docs/img` are derived from it.
+  the project site if you use it. The figures in `docs/img` are derived from it, apart from the
+  FlyWire ones (`gain_sweep_flywire.png` and the FlyWire points in `scoreboard.png`), which are derived
+  from the FlyWire data below.
 - FlyWire connectome, release 783: FlyWire Consortium, licensed CC-BY 4.0. Dorkenwald et al. 2024,
   *Neuronal wiring diagram of an adult brain*, Nature; annotations from Schlegel et al. 2024,
   *Whole-brain annotation and multi-connectome cell typing of Drosophila*, Nature

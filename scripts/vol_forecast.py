@@ -6,10 +6,12 @@
 
 Same reservoirs (wiring, inputs, input weights, readout neurons) as run_experiment.py; a second readout
 predicts log realized variance over the next 5 and 22 days (`volatility.horizons`). Benchmarks: HAR,
-HAR fitted on variance, EWMA, and HAR + the reservoir's inputs (linear). If run_experiment.py has
+HAR fitted on variance, EWMA, and HAR + the reservoir's inputs (linear), all fitted with the same
+(practically nil) penalty the reservoir readout puts on those columns. If run_experiment.py has
 already been run for this config, each reservoir's memory capacity is read from its graph_stats.csv
 to check whether more memory means better forecasts. With --best-gains, every wiring runs at its best
-valid gain from gain_sweep.py instead (memory then comes from the sweep, for the seeds it ran).
+valid gain from gain_sweep.py instead; that gain was picked and checked for latching on the sweep's
+seeds and is used for every seed here (memory then comes from the sweep, for the seeds it ran).
 Output in results/<name>/volatility/ (or volatility_best_gain/): summary.md (start here), metrics.csv,
 comparisons.csv, predictions.parquet, figures/.
 """
