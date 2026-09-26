@@ -1,6 +1,8 @@
 # flybrain-reservoir
 
 [![tests](https://github.com/MilanKalajdzic/flybrain-reservoir/actions/workflows/tests.yml/badge.svg)](https://github.com/MilanKalajdzic/flybrain-reservoir/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.14-3776ab)](pyproject.toml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-2a78d6)](LICENSE)
 
 **Does a real fruit fly brain make a better forecasting machine than random wiring?**
 
@@ -753,8 +755,9 @@ scripts/          download_data.py, build_connectome.py, run_experiment.py, brai
 configs/          small.yaml (laptop), full.yaml (whole CNS), flywire_small.yaml and
                   flywire_full.yaml (the replication), demo_synthetic.yaml (offline)
 notebooks/        01_connectome_tour.ipynb, 02_results.ipynb
-docs/img/         figures used in this README
+docs/img/         figures used in this README, and the repo's social preview image
 tests/            pytest suite (no downloads needed)
+CITATION.cff      how to cite this repo (GitHub's "Cite this repository" button)
 ```
 
 ## Data and credits

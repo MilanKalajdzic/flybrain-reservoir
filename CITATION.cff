@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this code or its results, please cite it as below."
+type: software
+title: "flybrain-reservoir: fruit fly connectomes as echo state networks, against random wiring"
+abstract: >-
+  Uses the wiring diagram of the adult male Drosophila central nervous system (166,700 neurons) as the
+  recurrent network of an echo state network, drives it with market data, and compares it with control
+  wirings that keep some of its statistics and scramble the rest. Replicated on the FlyWire female
+  brain. Across the whole brain the fly's wiring remembers 8-11x less than random rewirings, and no
+  wiring beats buy & hold.
+authors:
+  - given-names: Milan
+    family-names: Kalajdzic
+version: 1.0.0
+date-released: 2026-09-26
+license: MIT
+repository-code: "https://github.com/MilanKalajdzic/flybrain-reservoir"
+keywords:
+  - connectome
+  - drosophila
+  - reservoir computing
+  - echo state network
+  - flywire
+  - quantitative finance
+  - time series forecasting

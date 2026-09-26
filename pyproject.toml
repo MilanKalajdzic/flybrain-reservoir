@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flybrain-reservoir"
-version = "0.1.0"
-description = "Reservoir computing on the fruit fly male CNS connectome, tested against random-wiring controls on market data."
+version = "1.0.0"
+description = "Reservoir computing on fruit fly connectomes (male CNS, replicated on FlyWire), tested against random-wiring controls on market data."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Milan" }]
+authors = [{ name = "Milan Kalajdzic" }]
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
