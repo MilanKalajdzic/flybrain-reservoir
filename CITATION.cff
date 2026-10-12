@@ -10,9 +10,10 @@ abstract: >-
   wiring beats buy & hold.
 authors:
   - given-names: Milan
-    family-names: Kalajdzic
-version: 1.0.1
-date-released: 2026-09-26
+    family-names: Kalajdžić
+version: 1.0.2
+doi: 10.5281/zenodo.23312513
+date-released: 2026-10-12
 license: MIT
 repository-code: "https://github.com/MilanKalajdzic/flybrain-reservoir"
 keywords:
