@@ -3,6 +3,7 @@
 [![tests](https://github.com/MilanKalajdzic/flybrain-reservoir/actions/workflows/tests.yml/badge.svg)](https://github.com/MilanKalajdzic/flybrain-reservoir/actions/workflows/tests.yml)
 [![python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.14-3776ab)](pyproject.toml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-2a78d6)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23312513.svg)](https://doi.org/10.5281/zenodo.23312513)
 
 **Does a real fruit fly brain make a better forecasting machine than random wiring?**
 
